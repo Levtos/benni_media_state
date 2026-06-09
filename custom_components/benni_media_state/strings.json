@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Profil wählen",
+        "description": "Profil-Hub: für welche Route gilt diese Instanz? (benni / eltern). Die Quellen werden im nächsten Schritt aus der Profil-Map vorausgefüllt.",
+        "data": {
+          "profile": "Profil"
+        }
+      },
+      "sources": {
+        "title": "Quellen (vorläufig)",
+        "description": "Roh-Quellen, aus denen der Media-Context abgeleitet wird. Auto-vorausgefüllt aus der Profil-Map, wo vorhanden. Das endgültige Quell-Set legt das Lastenheft fest (Step 3).",
+        "data": {
+          "media_player_entities": "Media-Player (mehrere)",
+          "title_classifier_entity": "Title-Classifier (Titel→Enum)",
+          "headset_entity": "Headset-Aktiv-Signal"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Es ist bereits eine Media-State-Instanz konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Media State — Optionen",
+        "menu_options": {
+          "sources": "Quellen",
+          "diagnostics": "Diagnose"
+        }
+      },
+      "sources": {
+        "title": "Quellen",
+        "data": {
+          "media_player_entities": "Media-Player (mehrere)",
+          "title_classifier_entity": "Title-Classifier (Titel→Enum)",
+          "headset_entity": "Headset-Aktiv-Signal"
+        }
+      },
+      "diagnostics": {
+        "title": "Diagnose",
+        "data": {
+          "diagnostics_verbose": "Ausführliche Diagnose-Logs"
+        }
+      }
+    }
+  }
+}
