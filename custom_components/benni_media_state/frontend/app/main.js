@@ -107,7 +107,10 @@ class BmsApp extends HTMLElement {
     el.innerHTML = `
       <div class="card">
         <h2>Meta</h2>
-        <table><tr><td class="k">profile</td><td class="v">${fmt(s.profile)}</td></tr></table>
+        <table>
+          <tr><td class="k">profile</td><td class="v">${fmt(s.profile)}</td></tr>
+          <tr><td class="k">profile_label</td><td class="v">${fmt(s.profile_label)}</td></tr>
+        </table>
       </div>
       <div class="card">
         <h2>data (coordinator)</h2>

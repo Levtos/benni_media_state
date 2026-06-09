@@ -23,13 +23,10 @@ DATA_COORDINATOR: Final[str] = "coordinator"
 
 STORAGE_VERSION: Final[int] = 1
 
-# Single-Instance: stabile unique_id des Hub-Entries.
-SINGLETON_UNIQUE_ID: Final[str] = f"{DOMAIN}_singleton"
 
-
-def unique_id(*parts: str) -> str:
-    """Stabile unique_id über alle Entities des Moduls."""
-    return "_".join((DOMAIN, *parts))
+def unique_id(entry_id: str, suffix: str) -> str:
+    """Domain- + entry-scoped unique_id (core_state-Blaupause, kollisionsfrei)."""
+    return f"{DOMAIN}_{entry_id}_{suffix}"
 
 
 # --------------------------------------------------------------------------- #
@@ -39,7 +36,7 @@ def unique_id(*parts: str) -> str:
 CONF_PROFILE: Final[str] = "profile"
 PROFILE_BENNI: Final[str] = "benni"
 PROFILE_ELTERN: Final[str] = "eltern"
-PROFILES: Final[tuple[str, ...]] = (PROFILE_BENNI, PROFILE_ELTERN)
+PROFILES: Final[list[str]] = [PROFILE_BENNI, PROFILE_ELTERN]
 DEFAULT_PROFILE: Final[str] = PROFILE_BENNI
 PROFILE_LABELS: Final[dict[str, str]] = {PROFILE_BENNI: "Benni", PROFILE_ELTERN: "Eltern"}
 
@@ -88,6 +85,9 @@ DEFAULT_DATA: Final[dict[str, Any]] = {
     "headset_active": False,
     "entertainment_active": False,
     "active_reasons": [],
+    # Quiet bleibt L1 (FLEET-31) — Detektion folgt in Phase 3, hier Stub-Defaults.
+    "quiet_mode": False,
+    "quiet_mode_reason": None,
 }
 
 # --------------------------------------------------------------------------- #
@@ -103,6 +103,9 @@ UID_GAMING_PLATFORM: Final[str] = "gaming_platform"
 # binary_sensors
 UID_HEADSET_ACTIVE: Final[str] = "headset_active"
 UID_ENTERTAINMENT_ACTIVE: Final[str] = "entertainment_active"
+UID_QUIET_MODE: Final[str] = "quiet_mode"
+# quiet_mode_reason ist ein Sensor (Freitext-Begründung), kein Binary.
+UID_QUIET_MODE_REASON: Final[str] = "quiet_mode_reason"
 
 # Attribute, die der reiche Context-Sensor zusätzlich zum State zeigt.
 CONTEXT_ATTRS: Final[tuple[str, ...]] = (

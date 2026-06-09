@@ -28,10 +28,15 @@ L1 Context/Feeder — Teil des `benni_*`-Fleets. Wird aus dem Legacy-Monolithen
 | `sensor.benni_media_state_gaming_platform` | Gaming-Plattform |
 | `binary_sensor.benni_media_state_headset_active` | Headset aktiv |
 | `binary_sensor.benni_media_state_entertainment_active` | Entertainment aktiv |
+| `binary_sensor.benni_media_state_quiet_mode` | Quiet-Mode aktiv (L1, FLEET-31) |
+| `sensor.benni_media_state_quiet_mode_reason` | Begründung für Quiet-Mode |
+
+> Der Entity-Präfix folgt dem **Profil** (Device-Name, `has_entity_name`):
+> Route Benni → `…benni_media_state_*`, Route Eltern → `…eltern_media_state_*`.
 
 ## WebSocket
 
-`benni_media_state/get_status` → `{ profile, bindings, data }` (für das Panel).
+`benni_media_state/get_status` → `{ profile, profile_label, bindings, data }` (für das Panel).
 
 ## Roadmap
 

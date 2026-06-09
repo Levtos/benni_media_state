@@ -13,15 +13,19 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_PROFILE,
     CONTEXT_ATTRS,
+    DEFAULT_PROFILE,
     DOMAIN,
-    NAME,
+    PROFILE_LABELS,
     UID_CONTEXT,
     UID_DEVICE,
     UID_ENTERTAINMENT_ACTIVE,
     UID_GAMING_PLATFORM,
     UID_GAMING_SOURCE,
     UID_HEADSET_ACTIVE,
+    UID_QUIET_MODE,
+    UID_QUIET_MODE_REASON,
     UID_SUBCONTEXT,
     unique_id,
 )
@@ -45,20 +49,29 @@ SENSORS: tuple[FieldDesc, ...] = (
     FieldDesc("device", UID_DEVICE, "Media Device", "mdi:devices"),
     FieldDesc("gaming_source", UID_GAMING_SOURCE, "Gaming Source", "mdi:gamepad-variant"),
     FieldDesc("gaming_platform", UID_GAMING_PLATFORM, "Gaming Platform", "mdi:controller-classic"),
+    # Quiet bleibt L1 (FLEET-31): Begründung als Freitext-Sensor.
+    FieldDesc("quiet_mode_reason", UID_QUIET_MODE_REASON, "Quiet Mode Reason", "mdi:comment-question-outline"),
 )
 
 BINARY_SENSORS: tuple[FieldDesc, ...] = (
     FieldDesc("headset_active", UID_HEADSET_ACTIVE, "Headset Active", "mdi:headset"),
     FieldDesc("entertainment_active", UID_ENTERTAINMENT_ACTIVE, "Entertainment Active", "mdi:television-play"),
+    # Quiet bleibt L1 (FLEET-31).
+    FieldDesc("quiet_mode", UID_QUIET_MODE, "Quiet Mode", "mdi:volume-low"),
 )
 
 
 def device_info(entry: ConfigEntry) -> dict[str, Any]:
+    # Der Device-Name bestimmt bei has_entity_name den Entity-Slug:
+    #   "Benni Media State"  → sensor.benni_media_state_*
+    #   "Eltern Media State" → sensor.eltern_media_state_*
+    profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+    label = PROFILE_LABELS.get(profile, "Benni")
     return {
         "identifiers": {(DOMAIN, entry.entry_id)},
-        "name": NAME,
+        "name": f"{label} Media State",
         "manufacturer": "Benni",
-        "model": "Media State (Context-Feeder)",
+        "model": f"Media State · {label}",
     }
 
 
@@ -72,9 +85,10 @@ class MediaStateEntity(CoordinatorEntity[MediaStateCoordinator]):
     ) -> None:
         super().__init__(coordinator)
         self._desc = desc
-        self._attr_unique_id = unique_id(desc.uid)
+        self._attr_unique_id = unique_id(entry.entry_id, desc.uid)
         self._attr_name = desc.name
-        self._attr_suggested_object_id = unique_id(desc.uid)
+        # Kein suggested_object_id: der Slug kommt aus dem profil-getriebenen
+        # Device-Namen (has_entity_name) → <profil>_media_state_<type>.
         if desc.icon:
             self._attr_icon = desc.icon
         self._attr_device_info = device_info(entry)
