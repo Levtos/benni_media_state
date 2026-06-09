@@ -41,6 +41,10 @@ class MediaState:
     headset_active: bool = False
     entertainment_active: bool = False
     active_reasons: list[str] = field(default_factory=list)
+    # Quiet bleibt L1 (FLEET-31): media_state besitzt Detection + Begründung;
+    # media_policy konsumiert sie nur. Detection-Logik kommt in Phase 3.
+    quiet_mode: bool = False
+    quiet_mode_reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +56,8 @@ class MediaState:
             "headset_active": self.headset_active,
             "entertainment_active": self.entertainment_active,
             "active_reasons": list(self.active_reasons),
+            "quiet_mode": self.quiet_mode,
+            "quiet_mode_reason": self.quiet_mode_reason,
         }
 
 
@@ -61,7 +67,7 @@ def decide(inputs: Inputs) -> MediaState:
     Step 1: liefert stabile Defaults, damit der Feeder lädt und Panel/Entities
     eine Payload haben. Noch kein Verhalten.
     """
-    # TODO(step2): decide()-Body aus benni_media_context/logic.py extrahieren
-    # TODO(step3-lastenheft): B2 — gaming nur bei classifier-Enum >= 1 (Gate in detect_gaming)
-    # TODO(step3-lastenheft): Quiet/Private-Schichtgrenze (Detection bleibt ggf. in media_state)
+    # TODO(phase3): decide()-Body aus benni_media_context/logic.py extrahieren
+    # TODO(phase3): B2 — gaming nur bei classifier-Enum >= 1 (Gate in detect_gaming)
+    # TODO(phase3): Quiet-Detection (FLEET-31 entschieden: Quiet bleibt L1 hier in media_state)
     return MediaState()

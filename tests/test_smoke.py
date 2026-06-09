@@ -43,8 +43,12 @@ def test_decide_stub_returns_defaults():
     assert data["headset_active"] is False
     assert data["entertainment_active"] is False
     assert data["active_reasons"] == []
+    # Quiet bleibt L1 (FLEET-31): media_state besitzt die Felder.
+    assert data["quiet_mode"] is False
+    assert data["quiet_mode_reason"] is None
     for key in (
         "context", "subcontext", "device", "gaming_source", "gaming_platform",
         "headset_active", "entertainment_active", "active_reasons",
+        "quiet_mode", "quiet_mode_reason",
     ):
         assert key in data

@@ -11,7 +11,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
-from .const import DATA_COORDINATOR, DOMAIN, WS_GET_STATUS
+from .const import DATA_COORDINATOR, DOMAIN, PROFILE_LABELS, WS_GET_STATUS
 
 
 def _coordinator(hass: HomeAssistant):
@@ -26,6 +26,7 @@ def _coordinator(hass: HomeAssistant):
 def _status(coord) -> dict[str, Any]:
     return {
         "profile": coord.profile,
+        "profile_label": PROFILE_LABELS.get(coord.profile, coord.profile),
         "bindings": coord.bindings(),
         "data": dict(coord.data or {}),
     }

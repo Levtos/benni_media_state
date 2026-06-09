@@ -60,21 +60,23 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def profile(self) -> str:
         return self._profile
 
-    @property
-    def _opts(self) -> dict[str, Any]:
-        return {**self.entry.data, **self.entry.options}
+    def _entity_id(self, key: str) -> Any:
+        """Auto-Bind (core_state-Blaupause): options ▶ data ▶ PROFILE_PREFILL[profile].
 
-    def bound_entity(self, key: str) -> Any:
-        """Auto-Bind: Override (Config) ▶ Profil-Map ▶ leer."""
-        override = self._opts.get(key)
-        if override:
-            return override
-        return PROFILE_PREFILL.get(self._profile, {}).get(key)
+        Override (options/data) gewinnt, sonst die Profil-Map aus dem Code; so
+        propagieren Map-Updates aus dem Repo auf alle Anlagen, die den Slot nicht
+        überschrieben haben.
+        """
+        return (
+            self.entry.options.get(key)
+            or self.entry.data.get(key)
+            or PROFILE_PREFILL.get(self._profile, {}).get(key)
+        )
 
     def _watched_entities(self) -> list[str]:
         ids: list[str] = []
         for key in WATCH_KEYS:
-            val = self.bound_entity(key)
+            val = self._entity_id(key)
             if isinstance(val, str) and val:
                 ids.append(val)
             elif isinstance(val, (list, tuple)):
@@ -84,7 +86,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def bindings(self) -> dict[str, Any]:
         """Aktuelle Auflösung aller WATCH_KEYS — für Panel/Diagnose."""
-        return {key: self.bound_entity(key) for key in WATCH_KEYS}
+        return {key: self._entity_id(key) for key in WATCH_KEYS}
 
     # ----- lifecycle -----
     @callback
@@ -102,15 +104,15 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ----- evaluation -----
     def _build_inputs(self) -> logic.Inputs:
-        players = self.bound_entity(CONF_MEDIA_PLAYERS) or []
+        players = self._entity_id(CONF_MEDIA_PLAYERS) or []
         if isinstance(players, str):
             players = [players]
         player_states = {p: s for p in players if (s := _state(self.hass, p)) is not None}
         return logic.Inputs(
             media_players=tuple(players),
             player_states=player_states,
-            title_classifier=_state(self.hass, self.bound_entity(CONF_TITLE_CLASSIFIER)),
-            headset=_state(self.hass, self.bound_entity(CONF_HEADSET)),
+            title_classifier=_state(self.hass, self._entity_id(CONF_TITLE_CLASSIFIER)),
+            headset=_state(self.hass, self._entity_id(CONF_HEADSET)),
         )
 
     def _compute(self) -> dict[str, Any]:
