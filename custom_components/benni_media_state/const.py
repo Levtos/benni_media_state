@@ -5,10 +5,12 @@ Media-Context ab — entscheidet NICHTS (kein Apply). Konsumiert ihre Quellen
 AUSSCHLIESSLICH als HA-Entity-IDs aus dem Config-Flow — kein Cross-Modul-
 Python-Import (insbesondere keiner zu benni_media_policy).
 
-Step-1-Scaffold: Struktur gespiegelt von benni_light_policy (Hub + Auto-Bind +
-WS-Contract + Vanilla-Panel). Fachlogik folgt in Step 2/3.
+Phase 3 (FLEET-30): Context-Teil aus bennis_toolbox/benni_media_context
+gecarvt. Policy-Teile (Volumes, Subwoofer, Orchestratoren) bleiben draußen
+(FLEET-5/34). B2-Gate final: Spiel ja/nein = Titel-Ebene (ETM-Raw),
+Enum = Sound-Mode-Subcontext. Quiet ist vom Szenario ENTKOPPELT (FLEET-31).
 
-Lastenheft (Step 3): einhornzentrale/docs/lastenhefte/reviewed/media/
+Lastenheft: einhornzentrale/docs/lastenhefte/reviewed/media/ (v3.1)
 """
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ def unique_id(entry_id: str, suffix: str) -> str:
 
 # --------------------------------------------------------------------------- #
 # Profil-Hub (benni / eltern) — wie benni_core_devices / light_policy.
-# Auto-Bind-Reihenfolge: Override (Config) ▶ Profil-Map (PROFILE_PREFILL) ▶ leer.
+# Auto-Bind-Reihenfolge: Override (options ▶ data) ▶ Profil-Map ▶ leer.
 # --------------------------------------------------------------------------- #
 CONF_PROFILE: Final[str] = "profile"
 PROFILE_BENNI: Final[str] = "benni"
@@ -41,58 +43,231 @@ DEFAULT_PROFILE: Final[str] = PROFILE_BENNI
 PROFILE_LABELS: Final[dict[str, str]] = {PROFILE_BENNI: "Benni", PROFILE_ELTERN: "Eltern"}
 
 # --------------------------------------------------------------------------- #
-# Config-Keys — Roh-Quellen (vorläufig, finalisiert das Lastenheft in Step 3).
-# Alle als Entity-IDs aus dem Flow. TODO(step3-lastenheft): Quell-Contract festklopfen.
+# Context-Werte (1:1 aus der Toolbox — Konsumenten-Contract stabil halten).
 # --------------------------------------------------------------------------- #
-CONF_MEDIA_PLAYERS: Final[str] = "media_player_entities"   # beobachtete media_player.*
-CONF_TITLE_CLASSIFIER: Final[str] = "title_classifier_entity"  # Titel→Enum (Gaming-Gate B2)
-CONF_HEADSET: Final[str] = "headset_entity"                # Headset-Aktiv-Roh-Signal
+CTX_IDLE: Final = "idle"
+CTX_TV: Final = "tv"
+CTX_STREAMING: Final = "streaming"
+CTX_GAMING: Final = "gaming"
+CTX_PRIVATE: Final = "private_time"
+ALL_CONTEXTS: Final = [CTX_IDLE, CTX_TV, CTX_STREAMING, CTX_GAMING, CTX_PRIVATE]
+
+SUB_NONE: Final = "none"
+
+SUB_TV_DEFAULT: Final = "tv_default"
+SUB_TV_ARD: Final = "tv_ard"
+SUB_TV_ZDF: Final = "tv_zdf"
+SUB_TV_PRO7: Final = "tv_pro7"
+SUB_TV_RTL: Final = "tv_rtl"
+
+SUB_STR_DEFAULT: Final = "streaming_default"
+SUB_STR_NETFLIX: Final = "streaming_netflix"
+SUB_STR_DISNEY: Final = "streaming_disney"
+SUB_STR_PRIME: Final = "streaming_prime"
+SUB_STR_MAGENTA: Final = "streaming_magentatv"
+SUB_STR_ARD: Final = "streaming_ard"
+SUB_STR_ZDF: Final = "streaming_zdf"
+SUB_STR_YOUTUBE: Final = "streaming_youtube"
+SUB_STR_PLEX: Final = "streaming_plex"
+SUB_STR_JELLYFIN: Final = "streaming_jellyfin"
+SUB_STR_APPLETV: Final = "streaming_appletv"
+SUB_STR_RTL: Final = "streaming_rtl"
+
+SUB_GAME_DEFAULT: Final = "gaming_default"
+SUB_GAME_GRIND: Final = "gaming_grind"
+SUB_GAME_HEADSET: Final = "gaming_headset"
+
+# ---- Geräte ----
+DEV_NONE: Final = "none"
+DEV_TV: Final = "tv"
+DEV_APPLETV: Final = "appletv"
+DEV_PS5: Final = "ps5"
+DEV_SWITCH: Final = "switch"
+DEV_PC: Final = "pc"
+DEV_HOMEPODS: Final = "homepods"
+DEV_DENON: Final = "denon"
+
+# ---- Gaming-Quelle / -Plattform ----
+GS_NONE: Final = "none"
+GS_TV: Final = "tv"
+GS_PC: Final = "pc"
+
+GP_NONE: Final = "none"
+GP_PS5: Final = "ps5"
+GP_SWITCH: Final = "switch"
+GP_PC: Final = "pc"
+
+# --------------------------------------------------------------------------- #
+# B2-Gate FINAL (FLEET-30, Lastenheft v3.1 + ETM-Live-Verify 2026-06-10).
+# Zwei getrennte Ebenen:
+#   Spiel ja/nein  = Titel-Ebene: ETM-Raw-Sensor vorhanden ∧ ≠ "No Game".
+#                    (ETM self-gated via online_entity/Plug — Raw fällt bei
+#                    Gerät-aus sauber auf "No Game"/unavailable.)
+#   Sound-Mode     = Enum-Ebene (verbindlich per KH-7): 0=gaming_default
+#                    (Denon+Sub), 1=grind, 2=headset. Enum wählt NUR den
+#                    Subcontext — "Enum >= 1 als Gate" ist VERWORFEN
+#                    (Enum 0 ist gültiges Spiel).
+# --------------------------------------------------------------------------- #
+ENUM_GAME_DEFAULT: Final = 0
+ENUM_GAME_GRIND: Final = 1
+ENUM_GAME_HEADSET: Final = 2
+
+# Musik-/Media-Enum (title_classifier musikkatalog): 2 = Mute → Quiet-Detection
+# hier in media_state (FLEET-30/31); 1 = Boost ist Volume → media_policy.
+ENUM_MEDIA_MUTE: Final = 2
+
+# Raw-Werte, die als „kein Titel" gelten (lowercase-Vergleich). "No Game" ist
+# der ETM-Offline-/Leerlauf-Fallback (live verifiziert: pc_raw="No Game").
+NO_TITLE_VALUES: Final = frozenset({"", "no game", "unknown", "unavailable", "none"})
+
+# Apple-TV-System-Apps → Rollback aufs Pre-ATV-Szenario (Home, Settings, …).
+APPLETV_SYSTEM_APPS: Final = {
+    "com.apple.TVHomeSharing",
+    "com.apple.TVSettings",
+    "com.apple.HomeKit",
+    "com.apple.TVScreenSaver",
+}
+
+DEFAULT_APPLETV_APP_MAP: Final[dict[str, str]] = {
+    "com.netflix.Netflix": SUB_STR_NETFLIX,
+    "com.disney.disneyplus": SUB_STR_DISNEY,
+    "com.amazon.aiv.AIVApp": SUB_STR_PRIME,
+    "de.telekom.magentatv": SUB_STR_MAGENTA,
+    "de.ard.ardmediathek": SUB_STR_ARD,
+    "de.zdf.zdfmediathek": SUB_STR_ZDF,
+    "com.google.ios.youtube": SUB_STR_YOUTUBE,
+    "com.plexapp.plex": SUB_STR_PLEX,
+    "org.jellyfin.swiftfin": SUB_STR_JELLYFIN,
+    "com.apple.TVWatchList": SUB_STR_APPLETV,
+    "de.rtl.rtlnow": SUB_STR_RTL,
+}
+
+# TV-Quelle → Subcontext.
+TV_SOURCE_MAP: Final[dict[str, str]] = {
+    "ARD": SUB_TV_ARD,
+    "Das Erste": SUB_TV_ARD,
+    "ZDF": SUB_TV_ZDF,
+    "ProSieben": SUB_TV_PRO7,
+    "Pro7": SUB_TV_PRO7,
+    "RTL": SUB_TV_RTL,
+}
+
+# --------------------------------------------------------------------------- #
+# Config-Keys — Quell-Entities (alle als Entity-IDs aus dem Flow).
+# Nur das NEUE per-Device-Modell (kein Legacy-Fallback — frischer Start).
+# --------------------------------------------------------------------------- #
+# TV
+CONF_TV_PLAYER: Final = "tv_player_entity"
+CONF_TV_ACTIVE: Final = "tv_active_entity"
+CONF_TV_POWER: Final = "tv_power_entity"
+# Apple TV
+CONF_APPLETV_PLAYER: Final = "appletv_player_entity"
+# PS5
+CONF_PS5_PLAYER: Final = "ps5_player_entity"
+CONF_PS5_ACTIVE: Final = "ps5_active_entity"
+CONF_PS5_TITLE: Final = "ps5_title_entity"        # PSN-Now-Playing (Fallback)
+CONF_PS5_RAW: Final = "ps5_raw_entity"            # ETM Raw-Title (B2-Gate)
+CONF_PS5_ENUM: Final = "ps5_enum_entity"          # ETM Enum (Sound-Mode)
+# Switch
+CONF_SWITCH_ACTIVE: Final = "switch_active_entity"
+# PC
+CONF_PC_ACTIVE: Final = "pc_active_entity"
+CONF_PC_RAW: Final = "pc_raw_entity"              # ETM Raw-Title (B2-Gate)
+CONF_PC_ENUM: Final = "pc_enum_entity"            # ETM Enum (Sound-Mode)
+# Denon
+CONF_DENON_PLAYER: Final = "denon_player_entity"
+CONF_DENON_ACTIVE: Final = "denon_active_entity"
+# HomePods
+CONF_HOMEPODS_PLAYER: Final = "homepods_player_entity"
+# Musik-/Media-Enum (musikkatalog — Mute→Quiet)
+CONF_MEDIA_ENUM: Final = "media_enum_entity"
+# Quiet-Inputs (Detection bleibt L1 — FLEET-31; Output quiet_mode/_reason)
+CONF_QUIET_EXTERNAL: Final = "quiet_external_entity"
+CONF_DOOR: Final = "entry_door_entity"
+CONF_CALL: Final = "call_active_entity"
+CONF_ACTIVITY_STATE: Final = "activity_state_entity"
+# private_time-Trigger (FLEET-31: zustandsbasiert ODER manuell)
+CONF_STASH_STREAMS: Final = "stash_streams_entity"
+CONF_STASH_ENUM: Final = "stash_enum_entity"      # ETM Stash-Enum (FLEET-43)
+CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 
 # Keys, deren gebundene Entities der Coordinator beobachtet (event-driven).
 WATCH_KEYS: Final[tuple[str, ...]] = (
-    CONF_MEDIA_PLAYERS,
-    CONF_TITLE_CLASSIFIER,
-    CONF_HEADSET,
+    CONF_TV_PLAYER, CONF_TV_ACTIVE, CONF_TV_POWER,
+    CONF_APPLETV_PLAYER,
+    CONF_PS5_PLAYER, CONF_PS5_ACTIVE, CONF_PS5_TITLE, CONF_PS5_RAW, CONF_PS5_ENUM,
+    CONF_SWITCH_ACTIVE,
+    CONF_PC_ACTIVE, CONF_PC_RAW, CONF_PC_ENUM,
+    CONF_DENON_PLAYER, CONF_DENON_ACTIVE,
+    CONF_HOMEPODS_PLAYER,
+    CONF_MEDIA_ENUM,
+    CONF_QUIET_EXTERNAL, CONF_DOOR, CONF_CALL, CONF_ACTIVITY_STATE,
+    CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
 )
 
 # --------------------------------------------------------------------------- #
-# Profil-Map (Auto-Bind). Greift nur, wenn die Entity in HA existiert → auf
-# fremden Anlagen schadlos. Roh-Geräte sind installations-spezifisch → vorläufig
-# leer; der Coordinator fällt sauber auf "leer" zurück (Override ▶ Map ▶ leer).
-# TODO(step3-lastenheft): pro Profil die echten Roh-Quellen vorbelegen.
+# Profil-Map (Auto-Bind). benni = Live-IDs der Einhornzentrale (aus dem
+# produktiven Toolbox-Entry + ETM-Live-Verify übernommen, 2026-06-10).
+# Greift nur, wenn die Entity in HA existiert → auf fremden Anlagen schadlos.
+# eltern bewusst leer (Anlage existiert noch nicht).
 # --------------------------------------------------------------------------- #
 PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
-    PROFILE_BENNI: {},
+    PROFILE_BENNI: {
+        CONF_TV_PLAYER: "media_player.living_lgtv",
+        CONF_TV_ACTIVE: "binary_sensor.living_tv_plug_power_active_atomic",
+        CONF_TV_POWER: "sensor.living_tv_plug_power_atomic",
+        CONF_APPLETV_PLAYER: "media_player.living_appletv",
+        CONF_PS5_PLAYER: "media_player.living_ps5",
+        CONF_PS5_ACTIVE: "binary_sensor.living_ps5_plug_power_active_atomic",
+        CONF_PS5_TITLE: "sensor.psn_now_playing",
+        CONF_PS5_RAW: "sensor.title_classifier_ps5_raw",
+        CONF_PS5_ENUM: "sensor.title_classifier_ps5_enum",
+        CONF_SWITCH_ACTIVE: "binary_sensor.living_switch_plug_power_active_atomic",
+        CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
+        CONF_PC_RAW: "sensor.title_classifier_pc_raw",
+        CONF_PC_ENUM: "sensor.title_classifier_pc_enum",
+        CONF_DENON_PLAYER: "media_player.living_denon",
+        CONF_DENON_ACTIVE: "binary_sensor.living_denon_plug_power_active_atomic",
+        CONF_HOMEPODS_PLAYER: "media_player.living_homepods_ma_group",
+        CONF_MEDIA_ENUM: "sensor.title_classifier_musikkatalog_enum",
+        CONF_QUIET_EXTERNAL: "binary_sensor.media_quiet_mode_active_combined",
+        CONF_ACTIVITY_STATE: "sensor.benni_context_activity_state",
+        CONF_STASH_STREAMS: "sensor.stash_active_streams",
+        # Stash-ETM-Watcher (FLEET-43) + Dating-Schalter: Slots bleiben leer,
+        # bis die Entities existieren — Existenz-Filter bindet dann automatisch.
+        CONF_STASH_ENUM: "sensor.title_classifier_stash_enum",
+    },
     PROFILE_ELTERN: {},
 }
 
 # --------------------------------------------------------------------------- #
-# Options (Stub — Step-1-Gerüst, leere/Platzhalter-Karten).
+# Options.
 # --------------------------------------------------------------------------- #
+CONF_DEBOUNCE: Final = "debounce_seconds"
+DEFAULT_DEBOUNCE: Final = 4.0
 CONF_DIAGNOSTICS_VERBOSE: Final[str] = "diagnostics_verbose"
 DEFAULT_DIAGNOSTICS_VERBOSE: Final[bool] = False
 
 # --------------------------------------------------------------------------- #
-# Default-data (bis die Logik existiert — Step 2). Spiegelt das Entity-Roster.
+# Default-data. Spiegelt das Entity-Roster (Felder = MediaState.as_dict()).
 # --------------------------------------------------------------------------- #
-DEFAULT_CONTEXT: Final[str] = "idle"
+DEFAULT_CONTEXT: Final[str] = CTX_IDLE
 DEFAULT_DATA: Final[dict[str, Any]] = {
     "context": DEFAULT_CONTEXT,
-    "subcontext": None,
-    "device": None,
-    "gaming_source": None,
-    "gaming_platform": None,
+    "subcontext": SUB_NONE,
+    "device": DEV_NONE,
+    "gaming_source": GS_NONE,
+    "gaming_platform": GP_NONE,
     "headset_active": False,
     "entertainment_active": False,
     "active_reasons": [],
-    # Quiet bleibt L1 (FLEET-31) — Detektion folgt in Phase 3, hier Stub-Defaults.
+    # Quiet bleibt L1 (FLEET-31) — entkoppelt vom Szenario.
     "quiet_mode": False,
     "quiet_mode_reason": None,
 }
 
 # --------------------------------------------------------------------------- #
-# Output-Entity-Roster (vorläufig). uid = unique_id-Suffix, key = Feld in data,
-# object_id = gewünschte entity_id (ohne Domain-Prefix der Plattform).
+# Output-Entity-Roster. uid = unique_id-Suffix, key = Feld in data.
 # --------------------------------------------------------------------------- #
 # sensors
 UID_CONTEXT: Final[str] = "media_context"
@@ -116,6 +291,8 @@ CONTEXT_ATTRS: Final[tuple[str, ...]] = (
     "headset_active",
     "entertainment_active",
     "active_reasons",
+    "quiet_mode",
+    "quiet_mode_reason",
 )
 
 # --------------------------------------------------------------------------- #
