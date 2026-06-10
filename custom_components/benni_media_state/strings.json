@@ -9,12 +9,33 @@
         }
       },
       "entities": {
-        "title": "Quellen (vorläufig)",
-        "description": "Roh-Quellen, aus denen der Media-Context abgeleitet wird. Vorbefüllt mit der Profil-Map (Auto-Bind); gespeichert werden nur Abweichungen. Leer lassen = Auto-Bind aus Code. Das endgültige Quell-Set legt die Spec fest (Phase 3).",
+        "title": "Quellen (Context-Modell)",
+        "description": "Roh-Quellen, aus denen der Media-Context abgeleitet wird. Vorbefüllt mit der Profil-Map (Auto-Bind); gespeichert werden nur Abweichungen. Leer lassen = Auto-Bind aus Code.",
         "data": {
-          "media_player_entities": "Media-Player (mehrere)",
-          "title_classifier_entity": "Title-Classifier (Titel→Enum)",
-          "headset_entity": "Headset-Aktiv-Signal"
+          "tv_player_entity": "TV · Media-Player (LG)",
+          "tv_active_entity": "TV · Plug-Active (Atomic)",
+          "tv_power_entity": "TV · Plug-Power W (Atomic)",
+          "appletv_player_entity": "Apple TV · Media-Player",
+          "ps5_player_entity": "PS5 · Media-Player",
+          "ps5_active_entity": "PS5 · Plug-Active (Atomic)",
+          "ps5_title_entity": "PS5 · PSN-Titel (Fallback)",
+          "ps5_raw_entity": "PS5 · ETM Raw-Titel (B2-Gate)",
+          "ps5_enum_entity": "PS5 · ETM Enum (Sound-Mode 0/1/2)",
+          "switch_active_entity": "Switch · Dock-Plug-Active",
+          "pc_active_entity": "PC · Plug-Active (Atomic)",
+          "pc_raw_entity": "PC · ETM Raw-Titel (B2-Gate)",
+          "pc_enum_entity": "PC · ETM Enum (Sound-Mode 0/1/2)",
+          "denon_player_entity": "Denon · Media-Player",
+          "denon_active_entity": "Denon · Plug-Active (Atomic)",
+          "homepods_player_entity": "HomePods · Media-Player (MA-Gruppe)",
+          "media_enum_entity": "Musik · ETM Enum (2 = Mute → Quiet)",
+          "quiet_external_entity": "Quiet · externes Signal (gewinnt über Heuristik)",
+          "entry_door_entity": "Quiet · Etagentür offen",
+          "call_active_entity": "Quiet · Anruf aktiv",
+          "activity_state_entity": "Quiet · Activity State (sleep/quiet)",
+          "stash_streams_entity": "Private · Stash Active Streams",
+          "stash_enum_entity": "Private · ETM Stash-Enum (FLEET-43)",
+          "private_manual_entity": "Private · manueller Schalter (Dating/Besuch)"
         }
       }
     },
@@ -28,20 +49,42 @@
         "title": "Media State — Optionen",
         "menu_options": {
           "entities": "Quellen",
-          "diagnostics": "Diagnose"
+          "diagnostics": "Tuning & Diagnose"
         }
       },
       "entities": {
         "title": "Quellen",
         "data": {
-          "media_player_entities": "Media-Player (mehrere)",
-          "title_classifier_entity": "Title-Classifier (Titel→Enum)",
-          "headset_entity": "Headset-Aktiv-Signal"
+          "tv_player_entity": "TV · Media-Player (LG)",
+          "tv_active_entity": "TV · Plug-Active (Atomic)",
+          "tv_power_entity": "TV · Plug-Power W (Atomic)",
+          "appletv_player_entity": "Apple TV · Media-Player",
+          "ps5_player_entity": "PS5 · Media-Player",
+          "ps5_active_entity": "PS5 · Plug-Active (Atomic)",
+          "ps5_title_entity": "PS5 · PSN-Titel (Fallback)",
+          "ps5_raw_entity": "PS5 · ETM Raw-Titel (B2-Gate)",
+          "ps5_enum_entity": "PS5 · ETM Enum (Sound-Mode 0/1/2)",
+          "switch_active_entity": "Switch · Dock-Plug-Active",
+          "pc_active_entity": "PC · Plug-Active (Atomic)",
+          "pc_raw_entity": "PC · ETM Raw-Titel (B2-Gate)",
+          "pc_enum_entity": "PC · ETM Enum (Sound-Mode 0/1/2)",
+          "denon_player_entity": "Denon · Media-Player",
+          "denon_active_entity": "Denon · Plug-Active (Atomic)",
+          "homepods_player_entity": "HomePods · Media-Player (MA-Gruppe)",
+          "media_enum_entity": "Musik · ETM Enum (2 = Mute → Quiet)",
+          "quiet_external_entity": "Quiet · externes Signal (gewinnt über Heuristik)",
+          "entry_door_entity": "Quiet · Etagentür offen",
+          "call_active_entity": "Quiet · Anruf aktiv",
+          "activity_state_entity": "Quiet · Activity State (sleep/quiet)",
+          "stash_streams_entity": "Private · Stash Active Streams",
+          "stash_enum_entity": "Private · ETM Stash-Enum (FLEET-43)",
+          "private_manual_entity": "Private · manueller Schalter (Dating/Besuch)"
         }
       },
       "diagnostics": {
-        "title": "Diagnose",
+        "title": "Tuning & Diagnose",
         "data": {
+          "debounce_seconds": "Debounce (Sekunden, 0 = sofort)",
           "diagnostics_verbose": "Ausführliche Diagnose-Logs"
         }
       }

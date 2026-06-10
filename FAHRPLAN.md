@@ -8,19 +8,20 @@ L1 Context-Feeder. Aus `bennis_toolbox/.../benni_media_context/` extrahiert
 Lauffähiges, leeres Skeleton, Struktur gespiegelt von `benni_light_policy`:
 Hub + Auto-Bind + WS-Contract + Vanilla-Panel. **Keine Fachlogik.**
 
-## Step 2 — Logik-Extraktion (offen)
+## Phase 3 — Context-Extraktion ✅ (0.2.0, FLEET-30)
 
-- `decide()`-Body aus `benni_media_context/logic.py` nach `logic.py` heben
-  (HA-frei, Logik unverändert lassen — konservativer Lift, Shadow-Modus).
-- Inputs-Contract an die echten Roh-Quellen angleichen.
-- Pure-logic-Tests aus der Toolbox mitnehmen/anpassen.
+- Context-Teil aus `benni_media_context` gecarvt (detect_* + decide), HA-frei.
+- B2-Gate FINAL (Titel-Ebene via ETM-Raw, Enum = Sound-Mode) + R6 (PS5-Menü
+  → grind, Sticky-Edge).
+- Quiet entkoppelt (FLEET-31): Detection bleibt L1, schaltet kein Szenario.
+- private_time: Stash-Streams / ETM-Stash-Enum (FLEET-43) / manueller Schalter.
+- Volles Quellmodell + Live-Prefill (benni), Debounce 4 s.
 
-## Step 3 — Lastenheft (offen)
+## Phase 4 — Lastenheft + Cut-over (offen, FLEET-36)
 
-- Reviewtes Lastenheft einarbeiten: Verhaltens-Spec, B2-Fix
-  (`gaming nur bei classifier-Enum >= 1`, Gate in `detect_gaming`).
-- Quiet/Private-Schichtgrenze klären (Detection bleibt ggf. hier in media_state).
-- Entity-Roster finalisieren (aktuell vorläufig).
+- Konsumenten umkonfigurieren (light_policy, core_state, YAML) auf die
+  `<profil>_media_state_*`-Entities; Toolbox-Modul danach löschen (Strangler).
+- Entity-Roster final bestätigen; Shadow-Vergleich Toolbox vs. media_state.
 
 ## Konsum-Vertrag
 

@@ -3,11 +3,14 @@
 Profil-Mechanik 1:1 aus benni_core_state (gelockte Blaupause, FLEET-29):
 - Schritt `user`: Profil-SelectSelector (benni/eltern).
 - Schritt `entities`: Quell-Slots, vorbefüllt mit der Profil-Map (Auto-Bind
-  sichtbar), gespeichert werden aber **nur Abweichungen** (`_entity_overrides`).
+  sichtbar), gespeichert werden **nur Abweichungen** (`_entity_overrides`).
   `_prefill_defaults` filtert auf Entities, die in dieser HA existieren.
 - Single-Instance: nur ein Config-Entry (`_async_current_entries()`-Gate).
 - Auto-Bind `options ▶ data ▶ PROFILE_PREFILL[profile]` lebt im Coordinator
   (`_entity_id`).
+
+Phase 3 (FLEET-30): Entity-Slots = volles Context-Quellmodell (TV/ATV/PS5/
+Switch/PC/Denon/HomePods + ETM-Raw/Enum + Quiet + private_time-Trigger).
 
 HA erkennt den Config-Flow nur unter `config_flow.py` (Pflicht-Modulname).
 """
@@ -22,11 +25,15 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_APPLETV_PLAYER,
+    CONF_DEBOUNCE,
+    CONF_DENON_PLAYER,
     CONF_DIAGNOSTICS_VERBOSE,
-    CONF_HEADSET,
-    CONF_MEDIA_PLAYERS,
+    CONF_HOMEPODS_PLAYER,
     CONF_PROFILE,
-    CONF_TITLE_CLASSIFIER,
+    CONF_PS5_PLAYER,
+    CONF_TV_PLAYER,
+    DEFAULT_DEBOUNCE,
     DEFAULT_DIAGNOSTICS_VERBOSE,
     DEFAULT_PROFILE,
     DOMAIN,
@@ -37,17 +44,20 @@ from .const import (
     WATCH_KEYS,
 )
 
-# --- Selektoren (ungefiltert, volle Flexibilität) ---
+# --- Selektoren ---
+# Bewusst weitgehend ungefiltert (volle Flexibilität); nur die echten
+# Media-Player-Slots filtern auf media_player.
 _ENTITY = selector.EntitySelector(selector.EntitySelectorConfig())
-_PLAYERS = selector.EntitySelector(
-    selector.EntitySelectorConfig(domain="media_player", multiple=True)
-)
+_PLAYER = selector.EntitySelector(selector.EntitySelectorConfig(domain="media_player"))
 _BOOL = selector.BooleanSelector()
 
+_PLAYER_KEYS = (
+    CONF_TV_PLAYER, CONF_APPLETV_PLAYER, CONF_PS5_PLAYER,
+    CONF_DENON_PLAYER, CONF_HOMEPODS_PLAYER,
+)
+
 SELECTORS: dict[str, Any] = {
-    CONF_MEDIA_PLAYERS: _PLAYERS,
-    CONF_TITLE_CLASSIFIER: _ENTITY,
-    CONF_HEADSET: _ENTITY,
+    key: (_PLAYER if key in _PLAYER_KEYS else _ENTITY) for key in WATCH_KEYS
 }
 
 # Entity-Slots (Override-fähig) = die Quell-Keys aus WATCH_KEYS.
@@ -178,6 +188,10 @@ class MediaStateOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data={**self.config_entry.options, **user_input})
         defaults = {**self.config_entry.data, **self.config_entry.options}
         schema = vol.Schema({
+            vol.Optional(
+                CONF_DEBOUNCE,
+                default=float(defaults.get(CONF_DEBOUNCE, DEFAULT_DEBOUNCE)),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0, max=60)),
             vol.Optional(
                 CONF_DIAGNOSTICS_VERBOSE,
                 default=bool(defaults.get(CONF_DIAGNOSTICS_VERBOSE, DEFAULT_DIAGNOSTICS_VERBOSE)),
