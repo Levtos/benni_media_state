@@ -233,9 +233,10 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_QUIET_EXTERNAL: "binary_sensor.media_quiet_mode_active_combined",
         CONF_ACTIVITY_STATE: "sensor.benni_context_activity_state",
         CONF_STASH_STREAMS: "sensor.stash_active_streams",
-        # Stash-ETM-Watcher (FLEET-43) + Dating-Schalter: Slots bleiben leer,
-        # bis die Entities existieren — Existenz-Filter bindet dann automatisch.
+        # Existenz-Filter bindet automatisch, sobald die Entity in HA existiert.
         CONF_STASH_ENUM: "sensor.title_classifier_stash_enum",
+        # Dating-/Besuch-Schalter (FLEET-44): manueller private_time-Trigger.
+        CONF_PRIVATE_MANUAL: "input_boolean.media_private_time_manual",
     },
     PROFILE_ELTERN: {},
 }
