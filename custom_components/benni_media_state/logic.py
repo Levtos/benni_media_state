@@ -353,10 +353,14 @@ def decide(
                     d.subcontext = tv_sub
                     reasons.append(f"tv:{inp.tv_source}")
                 elif inp.homepods_playing or inp.denon_active:
-                    # Reines Audio-Streaming/Musik → streaming_default.
-                    d.context = CTX_STREAMING
-                    d.subcontext = SUB_STR_DEFAULT
-                    reasons.append("audio_only")
+                    # Reines Audio (HomePods-/Denon-Musik) ist KEIN Screen-Szenario
+                    # → idle. Owner/Volume regelt media_policy über homepods_playing;
+                    # entertainment_active bleibt false → kein Cinema/TV-Glare im Licht.
+                    # (streaming = TV+AppleTV, §4.1 — Audio darf den Lichtkontext nicht
+                    # auf Cinema kippen. FLEET-36 Cut-over hat den Fehlmapping aufgedeckt.)
+                    d.context = CTX_IDLE
+                    d.subcontext = SUB_NONE
+                    reasons.append("audio_only_idle")
                 else:
                     d.context = CTX_IDLE
                     d.subcontext = SUB_NONE

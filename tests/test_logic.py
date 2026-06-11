@@ -64,11 +64,15 @@ def test_appletv_system_app_rollback():
     assert "atv_system_app_rollback" in d.active_reasons
 
 
-def test_audio_only_is_streaming_default():
+def test_audio_only_stays_idle_not_streaming():
+    # Reines Audio (HomePods-Musik) ist KEIN Screen-Szenario → idle, NICHT
+    # streaming. Sonst kippt der Lichtkontext (light_policy) faelschlich auf
+    # Cinema. Gerät wird trotzdem erkannt; Owner/Volume macht media_policy.
     d = L.decide(_inp(homepods_playing=True))
-    assert d.context == C.CTX_STREAMING
-    assert d.subcontext == C.SUB_STR_DEFAULT
+    assert d.context == C.CTX_IDLE
+    assert d.entertainment_active is False
     assert d.device == C.DEV_HOMEPODS
+    assert "audio_only_idle" in d.active_reasons
 
 
 # ----------------------------------------------------------- B2-Gate (PC)
