@@ -209,6 +209,58 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         val = st.attributes.get(attr)
         return str(val) if val is not None else None
 
+    def _attr_float(self, key: str, attr: str) -> float | None:
+        raw = self._attr(key, attr)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
+    def _device_matrix(self) -> dict[str, Any]:
+        """Was die Quellen gerade zeigen — für das Cockpit (UX-Layer rendert nur).
+        Liest dieselben Player wie _build_inputs; ändert KEINE Entscheidung."""
+        def dev(active: bool, state: str | None, icon: str, **extra: Any) -> dict[str, Any]:
+            out = {"active": bool(active), "state": state or "off", "icon": icon}
+            out.update({k: v for k, v in extra.items() if v is not None})
+            return out
+
+        tv_pl = self._state(CONF_TV_PLAYER)
+        atv = self._state(CONF_APPLETV_PLAYER)
+        ps5_pl = self._state(CONF_PS5_PLAYER)
+        hp = self._state(CONF_HOMEPODS_PLAYER)
+        denon_pl = self._state(CONF_DENON_PLAYER)
+        return {
+            "tv": dev(_bool(self._state(CONF_TV_ACTIVE)) or tv_pl in ("on", "playing", "paused"),
+                      tv_pl, "mdi:television", source=self._attr(CONF_TV_PLAYER, "source")),
+            "apple_tv": dev(atv in ("playing", "paused"), atv, "mdi:apple",
+                            app=self._attr(CONF_APPLETV_PLAYER, "app_name") or self._attr(CONF_APPLETV_PLAYER, "app_id")),
+            "ps5": dev(_bool(self._state(CONF_PS5_ACTIVE)) or ps5_pl in ("on", "playing", "paused"),
+                       ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title")),
+            "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch"),
+            "pc": dev(_bool(self._state(CONF_PC_ACTIVE)), self._state(CONF_PC_ACTIVE), "mdi:desktop-classic"),
+            "homepods": dev(hp == "playing", hp, "mdi:speaker-multiple",
+                            title=self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
+                            artist=self._attr(CONF_HOMEPODS_PLAYER, "media_artist"),
+                            volume=self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level")),
+            "denon": dev(_bool(self._state(CONF_DENON_ACTIVE)) or denon_pl in ("on", "playing"),
+                         denon_pl, "mdi:audio-video"),
+        }
+
+    def _now_playing(self) -> dict[str, Any] | None:
+        """Aktiver Audio-Stream (für die Hero-Karte), falls HomePods spielen."""
+        if self._state(CONF_HOMEPODS_PLAYER) != "playing":
+            return None
+        title = self._attr(CONF_HOMEPODS_PLAYER, "media_title")
+        if not title:
+            return None
+        return {
+            "device": "homepods",
+            "title": title,
+            "artist": self._attr(CONF_HOMEPODS_PLAYER, "media_artist"),
+            "volume": self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level"),
+        }
+
     # ----- evaluation -----
     def _build_inputs(self) -> logic.Inputs:
         # TV: Plug-Active ODER Player-On; Quelle aus dem Player-Attribut.
@@ -273,7 +325,11 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._sticky_gaming_sub = state.subcontext
         else:
             self._sticky_gaming_sub = None
-        return state.as_dict()
+        data = state.as_dict()
+        # Observability-Anreicherung (UX-Cockpit): Geräte-Matrix + Now-Playing.
+        data["devices"] = self._device_matrix()
+        data["now_playing"] = self._now_playing()
+        return data
 
     async def _async_update_data(self) -> dict[str, Any]:
         return self._compute()
