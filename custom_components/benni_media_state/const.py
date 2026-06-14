@@ -186,6 +186,13 @@ CONF_QUIET_EXTERNAL: Final = "quiet_external_entity"
 CONF_DOOR: Final = "entry_door_entity"
 CONF_CALL: Final = "call_active_entity"
 CONF_ACTIVITY_STATE: Final = "activity_state_entity"
+# Kontext-Echo (FLEET-69): core_state-Felder fürs Cockpit anzeigen (read-only,
+# keine Entscheidung — "State sieht den Kontext"). Auto-Bind via PROFILE_PREFILL.
+CONF_BIO_STATE: Final = "bio_state_entity"
+CONF_PRESENCE: Final = "presence_entity"
+CONF_HOUSEHOLD: Final = "household_entity"
+CONF_TRANSITION: Final = "transition_entity"
+CONF_DAY_STATE: Final = "day_state_entity"
 # private_time-Trigger (FLEET-31: zustandsbasiert ODER manuell)
 CONF_STASH_STREAMS: Final = "stash_streams_entity"
 CONF_STASH_ENUM: Final = "stash_enum_entity"      # ETM Stash-Enum (FLEET-43)
@@ -203,6 +210,7 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_MEDIA_ENUM,
     CONF_QUIET_EXTERNAL, CONF_DOOR, CONF_CALL, CONF_ACTIVITY_STATE,
     CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
+    CONF_BIO_STATE, CONF_PRESENCE, CONF_HOUSEHOLD, CONF_TRANSITION, CONF_DAY_STATE,
 )
 
 # --------------------------------------------------------------------------- #
@@ -232,6 +240,12 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_MEDIA_ENUM: "sensor.title_classifier_musikkatalog_enum",
         CONF_QUIET_EXTERNAL: "binary_sensor.media_quiet_mode_active_combined",
         CONF_ACTIVITY_STATE: "sensor.benni_context_activity_state",
+        # Kontext-Echo (FLEET-69) → core_state.
+        CONF_BIO_STATE: "sensor.benni_core_state_bio_state",
+        CONF_PRESENCE: "sensor.benni_core_state_presence_personal",
+        CONF_HOUSEHOLD: "sensor.benni_core_state_presence_household",
+        CONF_TRANSITION: "sensor.benni_core_state_presence_transition",
+        CONF_DAY_STATE: "sensor.benni_core_state_day_state",
         CONF_STASH_STREAMS: "sensor.stash_active_streams",
         # Existenz-Filter bindet automatisch, sobald die Entity in HA existiert.
         CONF_STASH_ENUM: "sensor.title_classifier_stash_enum",

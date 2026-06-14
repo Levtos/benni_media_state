@@ -31,6 +31,11 @@ from . import logic
 from .const import (
     CONF_ACTIVITY_STATE,
     CONF_APPLETV_PLAYER,
+    CONF_BIO_STATE,
+    CONF_DAY_STATE,
+    CONF_HOUSEHOLD,
+    CONF_PRESENCE,
+    CONF_TRANSITION,
     CONF_CALL,
     CONF_DEBOUNCE,
     CONF_DENON_ACTIVE,
@@ -247,6 +252,31 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                          denon_pl, "mdi:audio-video"),
         }
 
+    _GAME_LABELS = {0: "gaming_default", 1: "gaming_grind", 2: "gaming_headset"}
+    _MUSIC_LABELS = {0: "normal", 1: "boost", 2: "mute"}
+
+    def _context_echo(self) -> dict[str, Any]:
+        """core_state-Kontext fürs Cockpit (read-only Echo, keine Entscheidung)."""
+        return {
+            "bio_state": self._state(CONF_BIO_STATE),
+            "presence": self._state(CONF_PRESENCE),
+            "household": self._state(CONF_HOUSEHOLD),
+            "transition": self._state(CONF_TRANSITION),
+            "activity": self._state(CONF_ACTIVITY_STATE),
+            "day_state": self._state(CONF_DAY_STATE),
+        }
+
+    def _classifiers(self) -> dict[str, Any]:
+        """Title-Classifier-Enums + Labels (PS5/PC = Gaming, HomePods = Musik)."""
+        def cl(key: str, table: dict[int, str]) -> dict[str, Any]:
+            e = _opt_int(self._state(key))
+            return {"enum": e, "label": table.get(e) if e is not None else None}
+        return {
+            "ps5": cl(CONF_PS5_ENUM, self._GAME_LABELS),
+            "pc": cl(CONF_PC_ENUM, self._GAME_LABELS),
+            "homepods": cl(CONF_MEDIA_ENUM, self._MUSIC_LABELS),
+        }
+
     def _now_playing(self) -> dict[str, Any] | None:
         """Aktiver Audio-Stream (für die Hero-Karte), falls HomePods spielen."""
         if self._state(CONF_HOMEPODS_PLAYER) != "playing":
@@ -329,6 +359,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Observability-Anreicherung (UX-Cockpit): Geräte-Matrix + Now-Playing.
         data["devices"] = self._device_matrix()
         data["now_playing"] = self._now_playing()
+        data["context_cards"] = self._context_echo()
+        data["classifiers"] = self._classifiers()
         return data
 
     async def _async_update_data(self) -> dict[str, Any]:
