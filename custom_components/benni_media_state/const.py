@@ -252,6 +252,9 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_HOMEPODS_PLAYER: "media_player.living_homepods_ma_group",
         CONF_MEDIA_ENUM: "sensor.title_classifier_musikkatalog_enum",
         # CONF_QUIET_EXTERNAL bewusst NICHT gebunden — Quiet ist L1 (FLEET-31).
+        # Quiet-Trigger: Etagentür (R20). Call-Monitor existiert in HA nicht
+        # (keine Fritzbox-Call-Integration) → CONF_CALL bleibt unbound.
+        CONF_DOOR: "binary_sensor.hall_entry_door_contact",
         CONF_ACTIVITY_STATE: "sensor.benni_core_state_activity_state",
         # Kontext-Echo (FLEET-69) → core_state.
         CONF_BIO_STATE: "sensor.benni_core_state_bio_state",
