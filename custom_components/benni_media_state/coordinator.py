@@ -361,6 +361,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["now_playing"] = self._now_playing()
         data["context_cards"] = self._context_echo()
         data["classifiers"] = self._classifiers()
+        data["bindings"] = self.bindings()
         return data
 
     async def _async_update_data(self) -> dict[str, Any]:
