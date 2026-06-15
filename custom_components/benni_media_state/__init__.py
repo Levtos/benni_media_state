@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import MediaStateCoordinator
-from .view import async_remove_view, async_setup_view
+from .view import async_remove_view
 from .websocket_api import async_setup_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,8 +32,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Panel + WebSocket-API (Dashboard-Frontend). WS einmalig pro HA-Prozess.
-    await async_setup_view(hass)
+    # FLEET-66: kein eigenes Panel mehr — benni_media-Umbrella ist die einzige
+    # Media-UI. Beim Setup ein evtl. früher registriertes Panel aktiv entfernen.
+    # WS-Contract (get_status) bleibt (schadet nicht, Debug-fähig).
+    async_remove_view(hass)
     if not data.get(_WS_FLAG):
         async_setup_websocket_api(hass)
         data[_WS_FLAG] = True
