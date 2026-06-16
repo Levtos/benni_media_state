@@ -24,6 +24,7 @@ _WS_FLAG = "_ws_registered"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coord = MediaStateCoordinator(hass, entry)
+    await coord.async_load_persisted()   # OQ-2: Pre-ATV-Snapshot wiederherstellen
     await coord.async_config_entry_first_refresh()
     coord.async_start()
 

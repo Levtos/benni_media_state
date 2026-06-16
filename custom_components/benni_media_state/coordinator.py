@@ -25,6 +25,7 @@ from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
 )
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from . import logic
@@ -72,6 +73,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_STORE_VERSION = 1
 
 _TRUE_STATES = frozenset({"on", "true", "1", "home", "active", "playing", "open"})
 
@@ -114,6 +116,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
         self._profile = profile if profile in PROFILES else DEFAULT_PROFILE
         self._cancel_debounce: CALLBACK_TYPE | None = None
+        # OQ-2: Pre-ATV-Snapshot über Neustarts persistieren (R7-Rollback überlebt
+        # HA-Restart, statt nur RAM). Debounced-Save via Store.
+        self._store: Store = Store(hass, _STORE_VERSION, f"{DOMAIN}_{entry.entry_id}_state")
         # Zustandskrücken für die pure decide() (siehe Modul-Docstring).
         self._pre_atv: tuple[str, str] | None = None
         self._sticky_gaming_sub: str | None = None
@@ -157,6 +162,26 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def bindings(self) -> dict[str, Any]:
         """Aktuelle Auflösung aller WATCH_KEYS — für Panel/Diagnose."""
         return {key: self._entity_id(key) for key in WATCH_KEYS}
+
+    # ----- persistence (OQ-2: Pre-ATV-Snapshot) -----
+    async def async_load_persisted(self) -> None:
+        """Persistierten Pre-ATV-Snapshot laden (vor dem ersten Refresh aufrufen)."""
+        try:
+            data = await self._store.async_load()
+        except Exception as err:  # noqa: BLE001 — Persistenz darf Setup nie blocken
+            _LOGGER.warning("media_state: pre_atv load failed: %s", err)
+            return
+        pa = data.get("pre_atv") if isinstance(data, dict) else None
+        if isinstance(pa, (list, tuple)) and len(pa) == 2:
+            self._pre_atv = (str(pa[0]), str(pa[1]))
+            _LOGGER.debug("media_state: pre_atv restored = %s", self._pre_atv)
+
+    @callback
+    def _persist_pre_atv(self) -> None:
+        """Debounced-Save (5 s) — schreibt nur nach Ruhephasen, nicht pro Tick."""
+        self._store.async_delay_save(
+            lambda: {"pre_atv": list(self._pre_atv) if self._pre_atv else None}, 5.0
+        )
 
     # ----- lifecycle -----
     @callback
@@ -348,7 +373,10 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Pre-ATV-Szenario nachführen: solange das primäre Gerät NICHT der
         # Apple TV ist, ist das aktuelle Szenario der Rollback-Kandidat.
         if state.device != DEV_APPLETV:
-            self._pre_atv = (state.context, state.subcontext)
+            new_pre = (state.context, state.subcontext)
+            if new_pre != self._pre_atv:
+                self._pre_atv = new_pre
+                self._persist_pre_atv()  # OQ-2: über Neustarts halten
         # R6-Sticky: laufende PS5-Session merkt sich ihren Subcontext;
         # Session-Ende setzt zurück (nächstes Menü startet wieder bei grind).
         if state.context == CTX_GAMING and state.gaming_platform == GP_PS5:
