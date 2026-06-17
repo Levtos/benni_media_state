@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.2 — Switch-Steckdose vorübergehend ignoriert (Stopgap)
+
+- **Entscheidung:** Der 120-s-Latch aus 0.7.1 war auf Schätzdaten gebaut. Echte
+  Playing-Watt der Switch-Steckdose fehlen / widersprechen sich (Lastenheft
+  „Logik" idle ≤20/active ≥50 W mit nicht existierender Entität
+  `sensor.switch_nintendo_power`; Recorder 21 Tage nie über 3 W). Bis echte
+  idle/playing-Werte aus `sensor.living_switch_plug_power` vorliegen, wird
+  geraten — also wird die Switch-Steckdose vorerst NICHT als Kontext-Quelle
+  genutzt.
+- **`switch_dock` hart auf False** in `_build_inputs` (mit Verweis FLEET-95).
+  Der Roh-State bleibt im Cockpit sichtbar (`devices.switch.ignored=True`),
+  treibt aber keine Entscheidung mehr → kein Radio-Churn.
+- **Latch zurückgebaut:** `logic.latch_rising_edge`, `switch_latch_seconds`,
+  Coordinator-Timer und Tests aus 0.7.1 wieder entfernt.
+- **Re-Enable (FLEET-95):** beim nächsten echten Docken Watt mitschneiden,
+  `watt_threshold_on` in core_devices datenbasiert setzen, Switch hier wieder
+  als Quelle aktivieren + Entity-Namen sauberziehen (Excel-Logik veraltet).
+
 ## 0.7.1 — switch_dock Anstiegs-Latch (Radio-Churn-Fix)
 
 - **Bug:** Die Switch-Steckdose pulst im Standby periodisch kurz (≈3–5 W, bis
