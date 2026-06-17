@@ -278,6 +278,13 @@ CONF_DEBOUNCE: Final = "debounce_seconds"
 DEFAULT_DEBOUNCE: Final = 4.0
 CONF_DIAGNOSTICS_VERBOSE: Final[str] = "diagnostics_verbose"
 DEFAULT_DIAGNOSTICS_VERBOSE: Final[bool] = False
+# Workaround (FLEET): Anstiegs-Latch auf switch_dock. Die Switch-Steckdose
+# pulst im Standby periodisch kurz (≈3–5 W, bis ~71 s) → core_devices flippt
+# `powered` sofort, ohne Anstiegs-Filter. Hier muss die Last erst N Sekunden
+# DURCHGEHEND anliegen, bevor switch_dock als aktiv gilt. Eigentlicher Fix
+# gehört nach core_devices (generischer min-on-Filter beim Rewrite).
+CONF_SWITCH_LATCH_SECONDS: Final[str] = "switch_latch_seconds"
+DEFAULT_SWITCH_LATCH_SECONDS: Final[float] = 120.0
 
 # --------------------------------------------------------------------------- #
 # Default-data. Spiegelt das Entity-Roster (Felder = MediaState.as_dict()).

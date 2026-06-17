@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.1 — switch_dock Anstiegs-Latch (Radio-Churn-Fix)
+
+- **Bug:** Die Switch-Steckdose pulst im Standby periodisch kurz (≈3–5 W, bis
+  ~71 s beobachtet). core_devices' `watt_primary` flippt `powered` sofort beim
+  ersten Tick über Schwelle (kein Anstiegs-Filter), `switch_dock` wurde True →
+  Kontext kippte auf `gaming` → media_apply stoppte/restartete den Radio-Stream.
+- **Workaround:** Anstiegs-Latch auf `switch_dock` — der Plug muss
+  `switch_latch_seconds` (Default **120 s**, deckt die 71-s-Pulse ab)
+  DURCHGEHEND Last melden, bevor `switch_dock=True` durchgereicht wird. Fallende
+  Flanke folgt sofort. Reine Mechanik in `logic.latch_rising_edge` (HA-frei,
+  7 neue Tests); Coordinator hält nur Zustand + Timer (Re-Eval aufs Latch-Ende,
+  da das Roh-Signal während eines Pulses kein Event liefert).
+- **Option:** `switch_latch_seconds` (über Entry-Options/-Data überschreibbar).
+- Cockpit-Matrix zeigt `dock_pending`/`dock_latched`.
+- **Hinweis:** Eigentlicher Fix gehört nach core_devices (generischer
+  min-on-Filter im `watt_primary`) — als FLEET-Ticket für den Rewrite erfasst.
+
 ## 0.2.0 — Phase 3: Context-Extraktion (FLEET-30)
 
 - **logic.py-Carve** aus `bennis_toolbox/benni_media_context`: detect_devices,

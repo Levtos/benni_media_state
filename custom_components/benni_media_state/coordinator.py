@@ -27,6 +27,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from . import logic
 from .const import (
@@ -58,12 +59,14 @@ from .const import (
     CONF_STASH_ENUM,
     CONF_STASH_STREAMS,
     CONF_SWITCH_ACTIVE,
+    CONF_SWITCH_LATCH_SECONDS,
     CONF_TV_ACTIVE,
     CONF_TV_PLAYER,
     CONF_TV_POWER,
     CTX_GAMING,
     DEFAULT_DEBOUNCE,
     DEFAULT_PROFILE,
+    DEFAULT_SWITCH_LATCH_SECONDS,
     DEV_APPLETV,
     DOMAIN,
     GP_PS5,
@@ -124,6 +127,13 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sticky_gaming_sub: str | None = None
         # Manueller Subcontext-Override (Service-Fläche, optional).
         self._manual_nudge: str | None = None
+        # FLEET-Workaround: Anstiegs-Latch auf switch_dock (siehe const). Die
+        # Steckdose muss `switch_latch_seconds` DURCHGEHEND Last melden, bevor
+        # switch_dock=True durchgereicht wird; sonst churnt der kurze Standby-
+        # Puls den Radio-Stream. Abfall folgt dem Roh-Sensor sofort.
+        self._switch_rise_since: Any = None  # datetime | None
+        self._switch_latched: bool = False
+        self._cancel_switch_latch: CALLBACK_TYPE | None = None
 
     # ----- profile / binding -----
     @property
@@ -140,6 +150,16 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return max(0.0, float(self._opts.get(CONF_DEBOUNCE, DEFAULT_DEBOUNCE)))
         except (TypeError, ValueError):
             return DEFAULT_DEBOUNCE
+
+    @property
+    def switch_latch_seconds(self) -> float:
+        try:
+            return max(
+                0.0,
+                float(self._opts.get(CONF_SWITCH_LATCH_SECONDS, DEFAULT_SWITCH_LATCH_SECONDS)),
+            )
+        except (TypeError, ValueError):
+            return DEFAULT_SWITCH_LATCH_SECONDS
 
     def _entity_id(self, key: str) -> Any:
         """Auto-Bind (core_state-Blaupause): options ▶ data ▶ PROFILE_PREFILL[profile]."""
@@ -192,12 +212,53 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 async_track_state_change_event(self.hass, watched, self._on_state_change)
             )
         self.entry.async_on_unload(self._cancel_pending)
+        self.entry.async_on_unload(self._cancel_switch_latch_timer)
 
     @callback
     def _cancel_pending(self) -> None:
         if self._cancel_debounce is not None:
             self._cancel_debounce()
             self._cancel_debounce = None
+
+    # ----- switch_dock Anstiegs-Latch (FLEET-Workaround) -----
+    @callback
+    def _cancel_switch_latch_timer(self) -> None:
+        if self._cancel_switch_latch is not None:
+            self._cancel_switch_latch()
+            self._cancel_switch_latch = None
+
+    @callback
+    def _on_switch_latch_recheck(self, _now) -> None:
+        """Latch-Fenster abgelaufen: neu rechnen. Während eines Standby-Pulses
+        liefert der Roh-Sensor kein weiteres State-Change-Event, darum planen
+        wir die Re-Evaluation selbst auf das Latch-Ende."""
+        self._cancel_switch_latch = None
+        self.async_set_updated_data(self._compute())
+
+    def _latched_switch_dock(self) -> bool:
+        """switch_dock mit Anstiegs-Latch: True erst, wenn der Plug
+        `switch_latch_seconds` durchgehend Last meldet. Abfall sofort.
+
+        Reine Latch-Mechanik in logic.latch_rising_edge (HA-frei, testbar);
+        hier nur Zustands-Persistenz + Timer-Planung."""
+        res = logic.latch_rising_edge(
+            _bool(self._state(CONF_SWITCH_ACTIVE)),
+            latched=self._switch_latched,
+            rise_since=self._switch_rise_since,
+            now=dt_util.utcnow(),
+            latch_seconds=self.switch_latch_seconds,
+        )
+        self._switch_latched = res.latched
+        self._switch_rise_since = res.rise_since
+        if res.recheck_in is None:
+            self._cancel_switch_latch_timer()
+        else:
+            # Roh-Signal liefert während des Pulses kein Event → selbst planen.
+            self._cancel_switch_latch_timer()
+            self._cancel_switch_latch = async_call_later(
+                self.hass, max(0.1, res.recheck_in), self._on_switch_latch_recheck
+            )
+        return res.active
 
     @callback
     def _on_state_change(self, _event: Event) -> None:
@@ -267,7 +328,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             app=self._attr(CONF_APPLETV_PLAYER, "app_name") or self._attr(CONF_APPLETV_PLAYER, "app_id")),
             "ps5": dev(_bool(self._state(CONF_PS5_ACTIVE)) or ps5_pl in ("on", "playing", "paused"),
                        ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title")),
-            "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch"),
+            "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch",
+                          dock_latched=self._switch_latched,
+                          dock_pending=_bool(self._state(CONF_SWITCH_ACTIVE)) and not self._switch_latched),
             "pc": dev(_bool(self._state(CONF_PC_ACTIVE)), self._state(CONF_PC_ACTIVE), "mdi:desktop-classic"),
             "homepods": dev(hp == "playing", hp, "mdi:speaker-multiple",
                             title=self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
@@ -345,7 +408,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ps5_title=ps5_title,
             ps5_raw=self._state(CONF_PS5_RAW),
             ps5_enum=_int(self._state(CONF_PS5_ENUM)),
-            switch_dock=_bool(self._state(CONF_SWITCH_ACTIVE)),
+            switch_dock=self._latched_switch_dock(),
             pc_active=_bool(self._state(CONF_PC_ACTIVE)),
             pc_raw=self._state(CONF_PC_RAW),
             pc_enum=_int(self._state(CONF_PC_ENUM)),
