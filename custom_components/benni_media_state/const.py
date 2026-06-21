@@ -160,6 +160,10 @@ TV_SOURCE_MAP: Final[dict[str, str]] = {
 CONF_TV_PLAYER: Final = "tv_player_entity"
 CONF_TV_ACTIVE: Final = "tv_active_entity"
 CONF_TV_POWER: Final = "tv_power_entity"
+# FLEET-112: TV-Aktiv-Wahrheit aus dem core_devices-Master (sensor.benni_master_tv).
+# Attribut `is_active` fusioniert Watt-Schwelle + Player in EINEM Owner. Ersetzt den
+# Eigen-Schwellwert (raw_watt > 0); CONF_TV_ACTIVE/CONF_TV_POWER bleiben nur Fallback.
+CONF_TV_MASTER: Final = "tv_master_entity"
 # Apple TV
 CONF_APPLETV_PLAYER: Final = "appletv_player_entity"
 # PS5
@@ -200,7 +204,7 @@ CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 
 # Keys, deren gebundene Entities der Coordinator beobachtet (event-driven).
 WATCH_KEYS: Final[tuple[str, ...]] = (
-    CONF_TV_PLAYER, CONF_TV_ACTIVE, CONF_TV_POWER,
+    CONF_TV_PLAYER, CONF_TV_ACTIVE, CONF_TV_POWER, CONF_TV_MASTER,
     CONF_APPLETV_PLAYER,
     CONF_PS5_PLAYER, CONF_PS5_ACTIVE, CONF_PS5_TITLE, CONF_PS5_RAW, CONF_PS5_ENUM,
     CONF_SWITCH_ACTIVE,
@@ -226,8 +230,12 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
 #   nicht Plug-Schalter) → _bool(state) ist die korrekte „läuft wirklich"-Wahrheit.
 # - media_device/console_device/audio_endpoint (TV/PS5/AVR): State spiegelt
 #   Player/Status (off/playing/…), ebenfalls _bool-kompatibel.
-# - TV_POWER MUSS numerisch bleiben (_build_inputs floatet den State) → roher
-#   Watt-Sensor sensor.living_tv_plug_power, NICHT der Device-Sensor (State=off).
+# - TV_MASTER (FLEET-112): sensor.benni_master_tv ist die Aktiv-Wahrheit; der
+#   Coordinator liest das Attribut `is_active` (bool). Damit entfällt der
+#   Eigen-Schwellwert in media_state — die EINE Watt-Schwelle lebt im Master
+#   (core_devices, FLEET-126). TV_ACTIVE/TV_POWER bleiben nur Fallback, falls der
+#   Master nicht gebunden/verfügbar ist (fremde Anlage). TV_POWER MUSS dann
+#   numerisch bleiben (Fallback floatet den State) → roher Watt-Sensor.
 # - QUIET_EXTERNAL entfällt: Quiet-Detection ist L1 in media_state selbst
 #   (FLEET-31); ohne Bindung → quiet_external=None → interne Heuristik greift.
 # - ACTIVITY_STATE: Toolbox-Sensor (deprecated) → core_state.
@@ -237,6 +245,7 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_TV_PLAYER: "media_player.living_lgtv",
         CONF_TV_ACTIVE: "sensor.benni_device_living_tv",
         CONF_TV_POWER: "sensor.living_tv_plug_power",
+        CONF_TV_MASTER: "sensor.benni_master_tv",
         CONF_APPLETV_PLAYER: "media_player.living_appletv",
         CONF_PS5_PLAYER: "media_player.living_ps5",
         CONF_PS5_ACTIVE: "sensor.benni_device_ps5",

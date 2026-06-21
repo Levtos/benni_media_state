@@ -13,8 +13,9 @@
         "description": "Roh-Quellen, aus denen der Media-Context abgeleitet wird. Vorbefüllt mit der Profil-Map (Auto-Bind); gespeichert werden nur Abweichungen. Leer lassen = Auto-Bind aus Code.",
         "data": {
           "tv_player_entity": "TV · Media-Player (LG)",
-          "tv_active_entity": "TV · Plug-Active (Atomic)",
-          "tv_power_entity": "TV · Plug-Power W (Atomic)",
+          "tv_master_entity": "TV · Master is_active (core_devices)",
+          "tv_active_entity": "TV · Plug-Active (Atomic, Fallback)",
+          "tv_power_entity": "TV · Plug-Power W (Fallback)",
           "appletv_player_entity": "Apple TV · Media-Player",
           "ps5_player_entity": "PS5 · Media-Player",
           "ps5_active_entity": "PS5 · Plug-Active (Atomic)",
@@ -56,8 +57,9 @@
         "title": "Quellen",
         "data": {
           "tv_player_entity": "TV · Media-Player (LG)",
-          "tv_active_entity": "TV · Plug-Active (Atomic)",
-          "tv_power_entity": "TV · Plug-Power W (Atomic)",
+          "tv_master_entity": "TV · Master is_active (core_devices)",
+          "tv_active_entity": "TV · Plug-Active (Atomic, Fallback)",
+          "tv_power_entity": "TV · Plug-Power W (Fallback)",
           "appletv_player_entity": "Apple TV · Media-Player",
           "ps5_player_entity": "PS5 · Media-Player",
           "ps5_active_entity": "PS5 · Plug-Active (Atomic)",
