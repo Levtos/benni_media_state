@@ -202,6 +202,17 @@ CONF_STASH_STREAMS: Final = "stash_streams_entity"
 CONF_STASH_ENUM: Final = "stash_enum_entity"      # ETM Stash-Enum (FLEET-43)
 CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 
+# ReBind (FLEET-54): old core_devices Atomics/Combineds are obsolete once a
+# device master exists. Keep this map so saved ConfigEntry data/options that
+# still contain old source IDs resolve to the canonical master immediately.
+LEGACY_ENTITY_REPOINTS: Final[dict[str, str]] = {
+    "sensor.benni_device_living_tv": "sensor.benni_master_tv",
+    "sensor.benni_device_ps5": "sensor.benni_master_ps5",
+    "sensor.benni_device_living_switch_plug": "sensor.benni_master_switch",
+    "sensor.benni_device_living_pc": "sensor.benni_master_pc",
+    "sensor.benni_device_living_avr": "sensor.benni_master_denon",
+}
+
 # Keys, deren gebundene Entities der Coordinator beobachtet (event-driven).
 WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_TV_PLAYER, CONF_TV_ACTIVE, CONF_TV_POWER, CONF_TV_MASTER,
@@ -222,20 +233,12 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
 # Greift nur, wenn die Entity in HA existiert → auf fremden Anlagen schadlos.
 # eltern bewusst leer (Anlage existiert noch nicht).
 #
-# FLEET-52/64-Repoint (2026-06-14): Die `*_active`-Slots zeigten noch auf in
-# der Big-Bang-YAML-Retire (FLEET-54) gelöschte `*_plug_power_active_atomic`-
-# /`*_atomic`-Combineds; der Player-Fallback hat das nur maskiert. Jetzt auf
-# die core_devices-Haupt-Sensoren repointet (Live-Verify Einhornzentrale):
-# - power_device (PC/Switch-Plug): State = watt-primäres `powered` (reale Last,
-#   nicht Plug-Schalter) → _bool(state) ist die korrekte „läuft wirklich"-Wahrheit.
-# - media_device/console_device/audio_endpoint (TV/PS5/AVR): State spiegelt
-#   Player/Status (off/playing/…), ebenfalls _bool-kompatibel.
-# - TV_MASTER (FLEET-112): sensor.benni_master_tv ist die Aktiv-Wahrheit; der
-#   Coordinator liest das Attribut `is_active` (bool). Damit entfällt der
-#   Eigen-Schwellwert in media_state — die EINE Watt-Schwelle lebt im Master
-#   (core_devices, FLEET-126). TV_ACTIVE/TV_POWER bleiben nur Fallback, falls der
-#   Master nicht gebunden/verfügbar ist (fremde Anlage). TV_POWER MUSS dann
-#   numerisch bleiben (Fallback floatet den State) → roher Watt-Sensor.
+# FLEET-52/64/54-Repoint: Die `*_active`-Slots zeigen auf Core-Devices-Master,
+# sobald ein Master existiert. Der State ist _bool-kompatibel (active/playing
+# = True, off/standby/none = False); gerätespezifische Rohlogik lebt im Master.
+# - TV_MASTER (FLEET-112/126): sensor.benni_master_tv ist die Aktiv-Wahrheit;
+#   der Coordinator liest `is_active`. TV_ACTIVE bleibt nur manueller Fallback
+#   für fremde Anlagen ohne Master und wird im Benni-Profil nicht auto-gebunden.
 # - QUIET_EXTERNAL entfällt: Quiet-Detection ist L1 in media_state selbst
 #   (FLEET-31); ohne Bindung → quiet_external=None → interne Heuristik greift.
 # - ACTIVITY_STATE: Toolbox-Sensor (deprecated) → core_state.
@@ -243,21 +246,20 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
 PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
     PROFILE_BENNI: {
         CONF_TV_PLAYER: "media_player.living_lgtv",
-        CONF_TV_ACTIVE: "sensor.benni_device_living_tv",
         CONF_TV_POWER: "sensor.living_tv_plug_power",
         CONF_TV_MASTER: "sensor.benni_master_tv",
         CONF_APPLETV_PLAYER: "media_player.living_appletv",
         CONF_PS5_PLAYER: "media_player.living_ps5",
-        CONF_PS5_ACTIVE: "sensor.benni_device_ps5",
+        CONF_PS5_ACTIVE: "sensor.benni_master_ps5",
         CONF_PS5_TITLE: "sensor.psn_now_playing",
         CONF_PS5_RAW: "sensor.title_classifier_ps5_raw",
         CONF_PS5_ENUM: "sensor.title_classifier_ps5_enum",
-        CONF_SWITCH_ACTIVE: "sensor.benni_device_living_switch_plug",
-        CONF_PC_ACTIVE: "sensor.benni_device_living_pc",
+        CONF_SWITCH_ACTIVE: "sensor.benni_master_switch",
+        CONF_PC_ACTIVE: "sensor.benni_master_pc",
         CONF_PC_RAW: "sensor.title_classifier_pc_raw",
         CONF_PC_ENUM: "sensor.title_classifier_pc_enum",
         CONF_DENON_PLAYER: "media_player.living_denon",
-        CONF_DENON_ACTIVE: "sensor.benni_device_living_avr",
+        CONF_DENON_ACTIVE: "sensor.benni_master_denon",
         CONF_HOMEPODS_PLAYER: "media_player.living_homepods_ma_group",
         CONF_MEDIA_ENUM: "sensor.title_classifier_musikkatalog_enum",
         # CONF_QUIET_EXTERNAL bewusst NICHT gebunden — Quiet ist L1 (FLEET-31).

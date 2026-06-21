@@ -37,6 +37,7 @@ from .const import (
     DEFAULT_DIAGNOSTICS_VERBOSE,
     DEFAULT_PROFILE,
     DOMAIN,
+    LEGACY_ENTITY_REPOINTS,
     NAME,
     PROFILE_LABELS,
     PROFILE_PREFILL,
@@ -64,6 +65,12 @@ SELECTORS: dict[str, Any] = {
 _ENTITY_SLOT_KEYS: tuple[str, ...] = WATCH_KEYS
 
 
+def _normalize_entity_id(value: Any) -> Any:
+    if isinstance(value, str):
+        return LEGACY_ENTITY_REPOINTS.get(value, value)
+    return value
+
+
 def _entities_schema(defaults: dict[str, Any]) -> vol.Schema:
     fields: dict[Any, Any] = {}
     for key in _ENTITY_SLOT_KEYS:
@@ -82,7 +89,7 @@ def _entity_overrides(profile: str, user_input: dict[str, Any]) -> dict[str, Any
     code = PROFILE_PREFILL.get(profile, {})
     out: dict[str, Any] = {}
     for key in _ENTITY_SLOT_KEYS:
-        v = user_input.get(key)
+        v = _normalize_entity_id(user_input.get(key))
         if v and v != code.get(key):
             out[key] = v
     return out
@@ -93,7 +100,7 @@ def _override_or_map(profile: str, data: dict[str, Any]) -> dict[str, Any]:
     code = PROFILE_PREFILL.get(profile, {})
     out: dict[str, Any] = {}
     for key in _ENTITY_SLOT_KEYS:
-        v = data.get(key) or code.get(key)
+        v = _normalize_entity_id(data.get(key)) or code.get(key)
         if v:
             out[key] = v
     return out

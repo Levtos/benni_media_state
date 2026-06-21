@@ -68,6 +68,7 @@ from .const import (
     DEV_APPLETV,
     DOMAIN,
     GP_PS5,
+    LEGACY_ENTITY_REPOINTS,
     PROFILE_PREFILL,
     PROFILES,
     WATCH_KEYS,
@@ -144,11 +145,14 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _entity_id(self, key: str) -> Any:
         """Auto-Bind (core_state-Blaupause): options ▶ data ▶ PROFILE_PREFILL[profile]."""
-        return (
+        val = (
             self.entry.options.get(key)
             or self.entry.data.get(key)
             or PROFILE_PREFILL.get(self._profile, {}).get(key)
         )
+        if isinstance(val, str):
+            return LEGACY_ENTITY_REPOINTS.get(val, val)
+        return val
 
     def _watched_entities(self) -> list[str]:
         ids: list[str] = []

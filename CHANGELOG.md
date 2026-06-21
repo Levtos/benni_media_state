@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.1 - Master ReBind
+
+- Repointed Benni profile active-source defaults from obsolete
+  `sensor.benni_device_*` Core-Devices outputs to the existing device masters
+  (`sensor.benni_master_pc`, `ps5`, `switch`, `denon`).
+- Kept TV on `sensor.benni_master_tv` as the primary `is_active` source and
+  stopped auto-binding the legacy TV active fallback.
+- Added legacy entity normalization so saved ConfigEntry data/options that
+  still contain old active-source IDs resolve to the corresponding master.
+- Updated config/options labels and added HA-free guardrail tests for the
+  master-backed defaults.
+
 ## 0.7.2 — Switch-Steckdose vorübergehend ignoriert (Stopgap)
 
 - **Entscheidung:** Der 120-s-Latch aus 0.7.1 war auf Schätzdaten gebaut. Echte
