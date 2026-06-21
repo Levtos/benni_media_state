@@ -59,6 +59,7 @@ from .const import (
     CONF_STASH_STREAMS,
     CONF_SWITCH_ACTIVE,
     CONF_TV_ACTIVE,
+    CONF_TV_MASTER,
     CONF_TV_PLAYER,
     CONF_TV_POWER,
     CTX_GAMING,
@@ -246,6 +247,33 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (TypeError, ValueError):
             return None
 
+    def _tv_active(self) -> tuple[bool, bool | None]:
+        """TV-Aktiv-Wahrheit (FLEET-112).
+
+        Primär = core_devices-Master (sensor.benni_master_tv, Attribut
+        `is_active`): fusioniert Watt-Schwelle + Player in EINEM Owner. Ersetzt
+        den alten Eigen-Schwellwert raw_watt>0, der das TV-Standby-Plateau
+        (~35–39 W) bis 0 W als „an" hielt und den Szenario-Wechsel ~7 Min
+        verschleppte. Die EINE Watt-Schwelle lebt im Master (FLEET-126).
+
+        Fallback (Master nicht gebunden/verfügbar, z. B. fremde Anlage) = alte
+        State-/Player-/Rohwatt-Heuristik. Returns (tv_active, tv_power);
+        tv_power ist nur im Fallback gesetzt, sonst None (Master entscheidet).
+        """
+        master = _opt_bool(self._attr(CONF_TV_MASTER, "is_active"))
+        if master is not None:
+            return master, None
+        tv_player_state = self._state(CONF_TV_PLAYER)
+        active = _bool(self._state(CONF_TV_ACTIVE)) or tv_player_state in (
+            "on", "playing", "paused",
+        )
+        tv_power_w = self._state(CONF_TV_POWER)
+        try:
+            tv_power = float(tv_power_w) > 0 if tv_power_w is not None else None
+        except (TypeError, ValueError):
+            tv_power = None
+        return active, tv_power
+
     # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
     def _device_matrix(self) -> dict[str, Any]:
         """Was die Quellen gerade zeigen — für das Cockpit (UX-Layer rendert nur).
@@ -261,7 +289,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hp = self._state(CONF_HOMEPODS_PLAYER)
         denon_pl = self._state(CONF_DENON_PLAYER)
         return {
-            "tv": dev(_bool(self._state(CONF_TV_ACTIVE)) or tv_pl in ("on", "playing", "paused"),
+            "tv": dev(self._tv_active()[0],
                       tv_pl, "mdi:television", source=self._attr(CONF_TV_PLAYER, "source")),
             "apple_tv": dev(atv in ("playing", "paused"), atv, "mdi:apple",
                             app=self._attr(CONF_APPLETV_PLAYER, "app_name") or self._attr(CONF_APPLETV_PLAYER, "app_id")),
@@ -319,13 +347,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ----- evaluation -----
     def _build_inputs(self) -> logic.Inputs:
-        # TV: Plug-Active ODER Player-On; Quelle aus dem Player-Attribut.
-        tv_player_state = self._state(CONF_TV_PLAYER)
-        tv_power_w = self._state(CONF_TV_POWER)
-        try:
-            tv_power = float(tv_power_w) > 0 if tv_power_w is not None else None
-        except (TypeError, ValueError):
-            tv_power = None
+        # TV (FLEET-112): Aktiv-Wahrheit aus dem core_devices-Master; Quelle für
+        # den Subcontext weiterhin aus dem Player-`source`-Attribut.
+        tv_active, tv_power = self._tv_active()
 
         # PS5: Plug-Active gewinnt, sonst Player-State.
         ps5_player_state = self._state(CONF_PS5_PLAYER)
@@ -335,8 +359,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ps5_title = self._attr(CONF_PS5_PLAYER, "media_title") or self._state(CONF_PS5_TITLE)
 
         return logic.Inputs(
-            tv_active=_bool(self._state(CONF_TV_ACTIVE))
-            or tv_player_state in ("on", "playing", "paused"),
+            tv_active=tv_active,
             tv_source=self._attr(CONF_TV_PLAYER, "source"),
             tv_power=tv_power,
             atv_state=self._state(CONF_APPLETV_PLAYER),
