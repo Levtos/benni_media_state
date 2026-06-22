@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 - FLEET-147: AppleTV Master ReBind
+
+- Repoint Benni AppleTV source defaults and saved raw/legacy AppleTV bindings to `sensor.benni_master_appletv`.
+- Treat the Core-Devices AppleTV Master `idle` activity enum as the old player `paused` state for streaming detection and device priority.
+- Keep Cockpit AppleTV app/title observability compatible with both raw player and master attributes.
+
 ## 0.8.1 - Master ReBind
 
 - Repointed Benni profile active-source defaults from obsolete

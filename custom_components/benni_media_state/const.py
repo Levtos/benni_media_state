@@ -206,6 +206,8 @@ CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 # device master exists. Keep this map so saved ConfigEntry data/options that
 # still contain old source IDs resolve to the canonical master immediately.
 LEGACY_ENTITY_REPOINTS: Final[dict[str, str]] = {
+    "media_player.living_appletv": "sensor.benni_master_appletv",
+    "sensor.benni_device_living_appletv": "sensor.benni_master_appletv",
     "sensor.benni_device_living_tv": "sensor.benni_master_tv",
     "sensor.benni_device_ps5": "sensor.benni_master_ps5",
     "sensor.benni_device_living_switch_plug": "sensor.benni_master_switch",
@@ -248,7 +250,7 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_TV_PLAYER: "media_player.living_lgtv",
         CONF_TV_POWER: "sensor.living_tv_plug_power",
         CONF_TV_MASTER: "sensor.benni_master_tv",
-        CONF_APPLETV_PLAYER: "media_player.living_appletv",
+        CONF_APPLETV_PLAYER: "sensor.benni_master_appletv",
         CONF_PS5_PLAYER: "media_player.living_ps5",
         CONF_PS5_ACTIVE: "sensor.benni_master_ps5",
         CONF_PS5_TITLE: "sensor.psn_now_playing",

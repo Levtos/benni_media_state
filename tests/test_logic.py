@@ -49,6 +49,13 @@ def test_appletv_netflix():
     assert d.device == C.DEV_APPLETV
 
 
+def test_appletv_master_idle_counts_as_streaming():
+    d = L.decide(_inp(atv_state="idle", atv_app_id="com.netflix.Netflix"))
+    assert d.context == C.CTX_STREAMING
+    assert d.subcontext == C.SUB_STR_NETFLIX
+    assert d.device == C.DEV_APPLETV
+
+
 def test_appletv_unknown_app_defaults():
     d = L.decide(_inp(atv_state="playing", atv_app_id="com.example.foo"))
     assert d.subcontext == C.SUB_STR_DEFAULT

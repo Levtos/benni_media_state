@@ -9,6 +9,7 @@ def test_benni_active_sources_default_to_masters():
 
     assert C.CONF_TV_ACTIVE not in prefill
     assert prefill[C.CONF_TV_MASTER] == "sensor.benni_master_tv"
+    assert prefill[C.CONF_APPLETV_PLAYER] == "sensor.benni_master_appletv"
     assert prefill[C.CONF_PS5_ACTIVE] == "sensor.benni_master_ps5"
     assert prefill[C.CONF_SWITCH_ACTIVE] == "sensor.benni_master_switch"
     assert prefill[C.CONF_PC_ACTIVE] == "sensor.benni_master_pc"
@@ -17,6 +18,8 @@ def test_benni_active_sources_default_to_masters():
 
 def test_legacy_active_sources_have_master_repoints():
     assert C.LEGACY_ENTITY_REPOINTS == {
+        "media_player.living_appletv": "sensor.benni_master_appletv",
+        "sensor.benni_device_living_appletv": "sensor.benni_master_appletv",
         "sensor.benni_device_living_tv": "sensor.benni_master_tv",
         "sensor.benni_device_ps5": "sensor.benni_master_ps5",
         "sensor.benni_device_living_switch_plug": "sensor.benni_master_switch",

@@ -183,9 +183,16 @@ def detect_private(inp: Inputs) -> Optional[str]:
 # Geräte-Priorität (höchstes gewinnt für das primäre "device")
 # Reihenfolge: ATV > TV > PS5 > Switch > PC > Denon > HomePods
 # --------------------------------------------------------------------------- #
+APPLETV_ACTIVE_STATES = ("playing", "paused", "idle")
+
+
+def appletv_active(state: Optional[str]) -> bool:
+    return state in APPLETV_ACTIVE_STATES
+
+
 def detect_devices(inp: Inputs) -> list[str]:
     devs = []
-    if inp.atv_state in ("playing", "paused"):
+    if appletv_active(inp.atv_state):
         devs.append(DEV_APPLETV)
     if inp.tv_active or inp.tv_power:
         devs.append(DEV_TV)
@@ -250,7 +257,7 @@ def detect_gaming(
 # Streaming via Apple TV
 # --------------------------------------------------------------------------- #
 def detect_streaming(inp: Inputs, app_map: dict[str, str]) -> Optional[str]:
-    if inp.atv_state not in ("playing", "paused"):
+    if not appletv_active(inp.atv_state):
         return None
     app = inp.atv_app_id
     if app is None:
@@ -336,7 +343,7 @@ def decide(
                 d.subcontext = stream_sub
                 reasons.append(f"streaming:{inp.atv_app_id}")
             elif (
-                inp.atv_state in ("playing", "paused")
+                appletv_active(inp.atv_state)
                 and inp.atv_app_id in APPLETV_SYSTEM_APPS
             ):
                 # System-App → Rollback aufs Pre-ATV-Szenario.

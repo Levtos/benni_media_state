@@ -289,14 +289,26 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         tv_pl = self._state(CONF_TV_PLAYER)
         atv = self._state(CONF_APPLETV_PLAYER)
+        atv_app = (
+            self._attr(CONF_APPLETV_PLAYER, "app_id")
+            or self._attr(CONF_APPLETV_PLAYER, "app_name")
+        )
         ps5_pl = self._state(CONF_PS5_PLAYER)
         hp = self._state(CONF_HOMEPODS_PLAYER)
         denon_pl = self._state(CONF_DENON_PLAYER)
         return {
             "tv": dev(self._tv_active()[0],
                       tv_pl, "mdi:television", source=self._attr(CONF_TV_PLAYER, "source")),
-            "apple_tv": dev(atv in ("playing", "paused"), atv, "mdi:apple",
-                            app=self._attr(CONF_APPLETV_PLAYER, "app_name") or self._attr(CONF_APPLETV_PLAYER, "app_id")),
+            "apple_tv": dev(
+                logic.appletv_active(atv),
+                atv,
+                "mdi:apple",
+                app=atv_app,
+                title=(
+                    self._attr(CONF_APPLETV_PLAYER, "current_title")
+                    or self._attr(CONF_APPLETV_PLAYER, "media_title")
+                ),
+            ),
             "ps5": dev(_bool(self._state(CONF_PS5_ACTIVE)) or ps5_pl in ("on", "playing", "paused"),
                        ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title")),
             "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch",
