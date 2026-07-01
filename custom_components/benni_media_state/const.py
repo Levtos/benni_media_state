@@ -88,13 +88,13 @@ PRES_HOME: Final = "zuhause"
 PRES_AWAY: Final = "abwesend"
 PRES_UNKNOWN: Final = "unknown"
 # Roh-States der Quelle (core_state presence_personal + generische Fallbacks),
-# lowercase-Vergleich. `bei_eltern` = physisch beim Elternhaus ⇒ NICHT am
-# lokalen Wohnzimmer-Media ⇒ away (Musik im leeren Raum soll stoppen).
+# lowercase-Vergleich. `bei_eltern` ist home-equivalent fuer Media: keine
+# Away-Cut-Logik, kein Musik-Stopp. Echte Away-Cuts nur bei `abwesend`/not_home.
 PRESENCE_HOME_STATES: Final = frozenset(
-    {"zuhause", "home", "on", "true", "1", "present"}
+    {"zuhause", "bei_eltern", "home", "on", "true", "1", "present"}
 )
 PRESENCE_AWAY_STATES: Final = frozenset(
-    {"abwesend", "bei_eltern", "not_home", "not home", "off", "false", "0", "away"}
+    {"abwesend", "not_home", "not home", "off", "false", "0", "away"}
 )
 
 # ---- Geräte ----

@@ -168,8 +168,8 @@ def classify_presence(raw: Optional[str]) -> str:
     """Roh-Presence → normalisierter State (zuhause/abwesend/unknown).
 
     Defensiv: None/unknown/unavailable und unbekannte Werte werden als
-    `unknown` behandelt (NIE blind als zuhause). `bei_eltern` zählt als away —
-    Benni ist dann physisch nicht am Wohnzimmer-Media.
+    `unknown` behandelt (NIE blind als zuhause). `bei_eltern` ist fuer Media
+    home-equivalent und darf keinen Away-Cut ausloesen.
     """
     if raw is None:
         return PRES_UNKNOWN

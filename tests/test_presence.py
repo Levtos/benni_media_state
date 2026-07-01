@@ -1,8 +1,8 @@
 """Presence-Gate (FLEET-212): Abwesenheit deaktiviert die Medienlogik.
 
 Deckt die Akzeptanzkriterien ab:
-1. home/zuhause/on → anwesend (kein Gate).
-2. away/abwesend/not_home/bei_eltern → abwesend (Gate greift).
+1. home/zuhause/bei_eltern/on → anwesend (kein Gate).
+2. away/abwesend/not_home → abwesend (Gate greift).
 3. unknown/unavailable/None → nicht anwesend, aber KEIN Fehl-Stop.
 4. Abwesenheit erzwingt idle/entertainment_active=False (stoppt Musik/Media).
 """
@@ -29,9 +29,8 @@ def test_away_states_are_absent():
         assert L.classify_presence(raw) == C.PRES_AWAY, raw
 
 
-def test_bei_eltern_counts_as_away():
-    # Beim Elternhaus ⇒ physisch NICHT am Wohnzimmer-Media ⇒ away.
-    assert L.classify_presence("bei_eltern") == C.PRES_AWAY
+def test_bei_eltern_counts_as_home_equivalent():
+    assert L.classify_presence("bei_eltern") == C.PRES_HOME
 
 
 def test_unknown_states_are_not_present():
@@ -70,11 +69,13 @@ def test_away_beats_private_time():
     assert d.away_gate is True
 
 
-def test_bei_eltern_gates_media():
+def test_bei_eltern_does_not_gate_media():
     d = L.decide(_inp(presence="bei_eltern", tv_active=True))
-    assert d.context == C.CTX_IDLE
-    assert d.away_gate is True
+    assert d.context == C.CTX_TV
+    assert d.away_gate is False
+    assert d.presence_state == C.PRES_HOME
     assert d.presence_source == "bei_eltern"
+    assert d.entertainment_active is True
 
 
 def test_home_does_not_gate():
