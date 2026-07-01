@@ -18,12 +18,14 @@ from .const import (
     DEFAULT_PROFILE,
     DOMAIN,
     PROFILE_LABELS,
+    UID_AWAY_GATE,
     UID_CONTEXT,
     UID_DEVICE,
     UID_ENTERTAINMENT_ACTIVE,
     UID_GAMING_PLATFORM,
     UID_GAMING_SOURCE,
     UID_HEADSET_ACTIVE,
+    UID_PRESENCE_STATE,
     UID_QUIET_MODE,
     UID_QUIET_MODE_REASON,
     UID_SUBCONTEXT,
@@ -51,6 +53,12 @@ SENSORS: tuple[FieldDesc, ...] = (
     FieldDesc("gaming_platform", UID_GAMING_PLATFORM, "Gaming Platform", "mdi:controller-classic"),
     # Quiet bleibt L1 (FLEET-31): Begründung als Freitext-Sensor.
     FieldDesc("quiet_mode_reason", UID_QUIET_MODE_REASON, "Quiet Mode Reason", "mdi:comment-question-outline"),
+    # Presence-Gate (FLEET-212): sichtbarer Presence-State (zuhause/abwesend/
+    # unknown) + Roh-Quelle & Away-Gate als Diagnose-Attribute.
+    FieldDesc(
+        "presence_state", UID_PRESENCE_STATE, "Presence State", "mdi:home-account",
+        ("presence_source", "away_gate"),
+    ),
 )
 
 BINARY_SENSORS: tuple[FieldDesc, ...] = (
@@ -58,6 +66,9 @@ BINARY_SENSORS: tuple[FieldDesc, ...] = (
     FieldDesc("entertainment_active", UID_ENTERTAINMENT_ACTIVE, "Entertainment Active", "mdi:television-play"),
     # Quiet bleibt L1 (FLEET-31).
     FieldDesc("quiet_mode", UID_QUIET_MODE, "Quiet Mode", "mdi:volume-low"),
+    # Presence-Gate (FLEET-212): Away-Gate als eigener Binary (deaktiviert die
+    # Medienlogik bei Abwesenheit — leicht als Automations-Trigger nutzbar).
+    FieldDesc("away_gate", UID_AWAY_GATE, "Away Gate", "mdi:home-export-outline"),
 )
 
 

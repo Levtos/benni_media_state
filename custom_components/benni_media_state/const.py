@@ -77,6 +77,26 @@ SUB_GAME_DEFAULT: Final = "gaming_default"
 SUB_GAME_GRIND: Final = "gaming_grind"
 SUB_GAME_HEADSET: Final = "gaming_headset"
 
+# --------------------------------------------------------------------------- #
+# Presence-Gate (FLEET-212). media_state konsumiert core_state
+# presence_personal als harten Gate: Abwesenheit deaktiviert jede aktive
+# Medienlogik (context→idle, entertainment_active=False), damit der Apply-Layer
+# laufende Musik/Entertainment stoppt statt weiterzufahren.
+#
+# Normalisierte Ausgabe-States des presence_state-Sensors:
+PRES_HOME: Final = "zuhause"
+PRES_AWAY: Final = "abwesend"
+PRES_UNKNOWN: Final = "unknown"
+# Roh-States der Quelle (core_state presence_personal + generische Fallbacks),
+# lowercase-Vergleich. `bei_eltern` = physisch beim Elternhaus ⇒ NICHT am
+# lokalen Wohnzimmer-Media ⇒ away (Musik im leeren Raum soll stoppen).
+PRESENCE_HOME_STATES: Final = frozenset(
+    {"zuhause", "home", "on", "true", "1", "present"}
+)
+PRESENCE_AWAY_STATES: Final = frozenset(
+    {"abwesend", "bei_eltern", "not_home", "not home", "off", "false", "0", "away"}
+)
+
 # ---- Geräte ----
 DEV_NONE: Final = "none"
 DEV_TV: Final = "tv"
@@ -165,7 +185,14 @@ CONF_TV_POWER: Final = "tv_power_entity"
 # Eigen-Schwellwert (raw_watt > 0); CONF_TV_ACTIVE/CONF_TV_POWER bleiben nur Fallback.
 CONF_TV_MASTER: Final = "tv_master_entity"
 # Apple TV
+# FLEET-212: sauber getrennt — nativer Media-Player (media_player-Domain) UND
+# der core_devices-Master (sensor-Domain). Der Master ist die Aktiv-Wahrheit
+# (Attribut `is_active`, spiegelt Player-State + app_id), der Player nur
+# Fallback für fremde Anlagen ohne Master. Vorher trug EIN Feld
+# (appletv_player_entity) den Master-Sensor, weshalb der media_player-gefilterte
+# Selector `sensor.benni_master_appletv` als falsche Domain ablehnte.
 CONF_APPLETV_PLAYER: Final = "appletv_player_entity"
+CONF_APPLETV_MASTER: Final = "appletv_master_entity"
 # PS5
 CONF_PS5_PLAYER: Final = "ps5_player_entity"
 CONF_PS5_ACTIVE: Final = "ps5_active_entity"
@@ -206,7 +233,10 @@ CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 # device master exists. Keep this map so saved ConfigEntry data/options that
 # still contain old source IDs resolve to the canonical master immediately.
 LEGACY_ENTITY_REPOINTS: Final[dict[str, str]] = {
-    "media_player.living_appletv": "sensor.benni_master_appletv",
+    # FLEET-212: `media_player.living_appletv` NICHT mehr auf den Master
+    # repointen — das ist jetzt der native Player-Slot (CONF_APPLETV_PLAYER).
+    # Ein value-basierter Repoint würde einen korrekt gewählten Player wieder
+    # in den Sensor-Master umschreiben und die Domain-Validierung erneut brechen.
     "sensor.benni_device_living_appletv": "sensor.benni_master_appletv",
     "sensor.benni_device_living_tv": "sensor.benni_master_tv",
     "sensor.benni_device_ps5": "sensor.benni_master_ps5",
@@ -218,7 +248,7 @@ LEGACY_ENTITY_REPOINTS: Final[dict[str, str]] = {
 # Keys, deren gebundene Entities der Coordinator beobachtet (event-driven).
 WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_TV_PLAYER, CONF_TV_ACTIVE, CONF_TV_POWER, CONF_TV_MASTER,
-    CONF_APPLETV_PLAYER,
+    CONF_APPLETV_PLAYER, CONF_APPLETV_MASTER,
     CONF_PS5_PLAYER, CONF_PS5_ACTIVE, CONF_PS5_TITLE, CONF_PS5_RAW, CONF_PS5_ENUM,
     CONF_SWITCH_ACTIVE,
     CONF_PC_ACTIVE, CONF_PC_RAW, CONF_PC_ENUM,
@@ -229,6 +259,49 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
     CONF_BIO_STATE, CONF_PRESENCE, CONF_HOUSEHOLD, CONF_TRANSITION, CONF_DAY_STATE,
 )
+
+# --------------------------------------------------------------------------- #
+# Selector-Domain-Contract (FLEET-212). HA-frei, damit der Config-/Options-Flow
+# die Slots konsistent typisiert UND das Verhalten pure testbar ist.
+#   PLAYER_KEYS  → native Media-Player: nur `media_player` (lehnt sensor ab).
+#   MASTER_KEYS  → core_devices-Master / Aktiv-Quellen: `sensor`/`binary_sensor`
+#                  (akzeptiert sensor.benni_master_* UND fremde Bool-Sensoren).
+#   Rest         → ungefiltert (volle Flexibilität für fremde Anlagen).
+# --------------------------------------------------------------------------- #
+PLAYER_DOMAIN: Final[str] = "media_player"
+MASTER_DOMAINS: Final[tuple[str, ...]] = ("sensor", "binary_sensor")
+
+PLAYER_KEYS: Final[tuple[str, ...]] = (
+    CONF_TV_PLAYER,
+    CONF_APPLETV_PLAYER,
+    CONF_PS5_PLAYER,
+    CONF_DENON_PLAYER,
+    CONF_HOMEPODS_PLAYER,
+)
+MASTER_KEYS: Final[tuple[str, ...]] = (
+    CONF_TV_MASTER,
+    CONF_APPLETV_MASTER,
+    CONF_PS5_ACTIVE,
+    CONF_SWITCH_ACTIVE,
+    CONF_PC_ACTIVE,
+    CONF_DENON_ACTIVE,
+)
+
+
+def source_domain_filter(key: str) -> tuple[str, ...] | None:
+    """Erlaubte Entity-Domains für einen Quell-Slot (Selector-Contract).
+
+    None = ungefiltert. Player-Slots liefern nur `media_player` (→ sensor wird
+    abgelehnt), Master-Slots `sensor`/`binary_sensor` (→ core_devices-Master
+    werden akzeptiert). Bildet 1:1 die EntitySelector-Domain-Filter ab, ist aber
+    HA-frei und damit ohne HA-Import testbar.
+    """
+    if key in PLAYER_KEYS:
+        return (PLAYER_DOMAIN,)
+    if key in MASTER_KEYS:
+        return MASTER_DOMAINS
+    return None
+
 
 # --------------------------------------------------------------------------- #
 # Profil-Map (Auto-Bind). benni = Live-IDs der Einhornzentrale.
@@ -250,7 +323,9 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_TV_PLAYER: "media_player.living_lgtv",
         CONF_TV_POWER: "sensor.living_tv_plug_power",
         CONF_TV_MASTER: "sensor.benni_master_tv",
-        CONF_APPLETV_PLAYER: "sensor.benni_master_appletv",
+        # Apple TV: nativer Player (Fallback) + core_devices-Master (Wahrheit).
+        CONF_APPLETV_PLAYER: "media_player.living_appletv",
+        CONF_APPLETV_MASTER: "sensor.benni_master_appletv",
         CONF_PS5_PLAYER: "media_player.living_ps5",
         CONF_PS5_ACTIVE: "sensor.benni_master_ps5",
         CONF_PS5_TITLE: "sensor.psn_now_playing",
@@ -308,6 +383,10 @@ DEFAULT_DATA: Final[dict[str, Any]] = {
     # Quiet bleibt L1 (FLEET-31) — entkoppelt vom Szenario.
     "quiet_mode": False,
     "quiet_mode_reason": None,
+    # Presence-Gate (FLEET-212).
+    "presence_state": PRES_UNKNOWN,
+    "presence_source": None,
+    "away_gate": False,
 }
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +404,9 @@ UID_ENTERTAINMENT_ACTIVE: Final[str] = "entertainment_active"
 UID_QUIET_MODE: Final[str] = "quiet_mode"
 # quiet_mode_reason ist ein Sensor (Freitext-Begründung), kein Binary.
 UID_QUIET_MODE_REASON: Final[str] = "quiet_mode_reason"
+# Presence-Gate (FLEET-212): sichtbarer Presence-State-Sensor + Away-Gate-Binary.
+UID_PRESENCE_STATE: Final[str] = "presence_state"
+UID_AWAY_GATE: Final[str] = "away_gate"
 
 # Attribute, die der reiche Context-Sensor zusätzlich zum State zeigt.
 CONTEXT_ATTRS: Final[tuple[str, ...]] = (
@@ -337,6 +419,10 @@ CONTEXT_ATTRS: Final[tuple[str, ...]] = (
     "active_reasons",
     "quiet_mode",
     "quiet_mode_reason",
+    # Presence-Gate (FLEET-212) — auch am Haupt-Sensor sichtbar.
+    "presence_state",
+    "presence_source",
+    "away_gate",
 )
 
 # --------------------------------------------------------------------------- #

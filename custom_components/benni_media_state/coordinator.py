@@ -31,22 +31,22 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from . import logic
 from .const import (
     CONF_ACTIVITY_STATE,
+    CONF_APPLETV_MASTER,
     CONF_APPLETV_PLAYER,
     CONF_BIO_STATE,
-    CONF_DAY_STATE,
-    CONF_HOUSEHOLD,
-    CONF_PRESENCE,
-    CONF_TRANSITION,
     CONF_CALL,
+    CONF_DAY_STATE,
     CONF_DEBOUNCE,
     CONF_DENON_ACTIVE,
     CONF_DENON_PLAYER,
     CONF_DOOR,
     CONF_HOMEPODS_PLAYER,
+    CONF_HOUSEHOLD,
     CONF_MEDIA_ENUM,
     CONF_PC_ACTIVE,
     CONF_PC_ENUM,
     CONF_PC_RAW,
+    CONF_PRESENCE,
     CONF_PRIVATE_MANUAL,
     CONF_PROFILE,
     CONF_PS5_ACTIVE,
@@ -58,6 +58,7 @@ from .const import (
     CONF_STASH_ENUM,
     CONF_STASH_STREAMS,
     CONF_SWITCH_ACTIVE,
+    CONF_TRANSITION,
     CONF_TV_ACTIVE,
     CONF_TV_MASTER,
     CONF_TV_PLAYER,
@@ -278,6 +279,33 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             tv_power = None
         return active, tv_power
 
+    def _atv(self) -> tuple[str | None, str | None]:
+        """Apple-TV-Wahrheit (FLEET-212): core_devices-Master primär, Player-Fallback.
+
+        Der Master (sensor.benni_master_appletv) fusioniert Aktiv-Erkennung +
+        app_id in EINEM Owner. Gelesen wird das Attribut `is_active` (bool) und
+        `player_state`/`app_id` (Master spiegelt den nativen Player). Ist der
+        Master aktiv, aber sein Player-State-Attribut noch stale, wird `playing`
+        erzwungen. Ohne Master (fremde Anlage) greift der native Player.
+        Returns (atv_state, atv_app_id) — atv_state ∈ playing/paused/idle/off/…
+        """
+        master_active = _opt_bool(self._attr(CONF_APPLETV_MASTER, "is_active"))
+        if master_active is not None:
+            state = self._attr(CONF_APPLETV_MASTER, "player_state")
+            if master_active and not logic.appletv_active(state):
+                state = "playing"
+            app = (
+                self._attr(CONF_APPLETV_MASTER, "app_id")
+                or self._attr(CONF_APPLETV_MASTER, "app_name")
+            )
+            return state, (app or None)
+        state = self._state(CONF_APPLETV_PLAYER)
+        app = (
+            self._attr(CONF_APPLETV_PLAYER, "app_id")
+            or self._attr(CONF_APPLETV_PLAYER, "app_name")
+        )
+        return state, app
+
     # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
     def _device_matrix(self) -> dict[str, Any]:
         """Was die Quellen gerade zeigen — für das Cockpit (UX-Layer rendert nur).
@@ -366,6 +394,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # TV (FLEET-112): Aktiv-Wahrheit aus dem core_devices-Master; Quelle für
         # den Subcontext weiterhin aus dem Player-`source`-Attribut.
         tv_active, tv_power = self._tv_active()
+        # Apple TV (FLEET-212): Master primär, nativer Player als Fallback.
+        atv_state, atv_app_id = self._atv()
 
         # PS5: Plug-Active gewinnt, sonst Player-State.
         ps5_player_state = self._state(CONF_PS5_PLAYER)
@@ -378,9 +408,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             tv_active=tv_active,
             tv_source=self._attr(CONF_TV_PLAYER, "source"),
             tv_power=tv_power,
-            atv_state=self._state(CONF_APPLETV_PLAYER),
-            atv_app_id=self._attr(CONF_APPLETV_PLAYER, "app_id")
-            or self._attr(CONF_APPLETV_PLAYER, "app_name"),
+            atv_state=atv_state,
+            atv_app_id=atv_app_id,
             ps5_on=ps5_on,
             ps5_title=ps5_title,
             ps5_raw=self._state(CONF_PS5_RAW),
@@ -404,6 +433,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             door_open=_bool(self._state(CONF_DOOR)),
             call_active=_bool(self._state(CONF_CALL)),
             activity_state=self._state(CONF_ACTIVITY_STATE),
+            # Presence-Gate (FLEET-212): Roh-State aus core_state presence_personal.
+            presence=self._state(CONF_PRESENCE),
             stash_streams=_opt_int(self._state(CONF_STASH_STREAMS)),
             stash_enum=_opt_int(self._state(CONF_STASH_ENUM)),
             private_manual=_bool(self._state(CONF_PRIVATE_MANUAL)),
