@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.0 — FLEET-212: Presence-Away-Gate + Config-Domain-Split
+
+- **Presence-Gate:** `logic.decide` konsumiert jetzt core_state
+  `presence_personal` als harten Gate mit höchster Priorität. Bei Abwesenheit
+  (`abwesend`/`bei_eltern`/`not_home`/…) → Szenario auf `idle`,
+  `entertainment_active=False`, Gaming-Felder geräumt → der Apply-Layer stoppt
+  laufende Musik/Entertainment, statt weiterzufahren. `bei_eltern` zählt als
+  away (physisch nicht am Wohnzimmer-Media). `unknown`/nicht gebunden greift
+  NICHT (kein Fehl-Stop bei Sensor-Aussetzern).
+- **Neue sichtbare Entitäten:** `sensor.<profil>_media_state_presence_state`
+  (`zuhause`/`abwesend`/`unknown`, mit `presence_source`- und
+  `away_gate`-Attribut) + `binary_sensor.<profil>_media_state_away_gate`. Der
+  Haupt-`Media Context`-Sensor spiegelt `presence_state`/`presence_source`/
+  `away_gate` zusätzlich als Attribut (Diagnose).
+- **Config-Domain-Fix:** Apple TV sauber in zwei Slots getrennt — nativer
+  `appletv_player_entity` (media_player) + `appletv_master_entity` (sensor,
+  core_devices-Master). Vorher trug EIN media_player-gefiltertes Feld den
+  Master-Sensor `sensor.benni_master_appletv` → Options-Flow lehnte ihn als
+  falsche Domain ab. Selektor-Domains laufen jetzt über den HA-freien Contract
+  `source_domain_filter` (Player→`media_player`, Master→`sensor`/
+  `binary_sensor`), pure testbar.
+- **Coordinator:** Apple-TV-Aktiv-Wahrheit primär aus dem Master (`is_active` +
+  `app_id`/`player_state`), nativer Player nur Fallback (spiegelt `_tv_active`).
+  Legacy-Repoint `media_player.living_appletv → master` entfernt (der Player ist
+  jetzt ein eigener Slot).
+- Tests: `test_presence.py` (Gate/Klassifikation) + `test_flow_domains.py`
+  (Selektor-Domain-Contract); `test_rebind.py` an den ATV-Split angepasst.
+  51 Tests grün.
+
 ## 0.8.2 - FLEET-147: AppleTV Master ReBind
 
 - Repoint Benni AppleTV source defaults and saved raw/legacy AppleTV bindings to `sensor.benni_master_appletv`.

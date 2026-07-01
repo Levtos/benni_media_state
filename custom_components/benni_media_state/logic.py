@@ -51,6 +51,11 @@ from .const import (
     GS_PC,
     GS_TV,
     NO_TITLE_VALUES,
+    PRES_AWAY,
+    PRES_HOME,
+    PRES_UNKNOWN,
+    PRESENCE_AWAY_STATES,
+    PRESENCE_HOME_STATES,
     SUB_GAME_DEFAULT,
     SUB_GAME_GRIND,
     SUB_GAME_HEADSET,
@@ -93,6 +98,9 @@ class Inputs:
     door_open: bool = False
     call_active: bool = False
     activity_state: Optional[str] = None
+    # Presence-Gate (FLEET-212): Roh-State von core_state presence_personal.
+    # None = nicht gebunden/unknown → kein Gate (defensiv, kein Fehl-Stop).
+    presence: Optional[str] = None
     # private_time-Trigger (FLEET-31)
     stash_streams: Optional[int] = None
     stash_enum: Optional[int] = None
@@ -116,6 +124,11 @@ class MediaState:
     # Quiet bleibt L1 (FLEET-31) — entkoppelt vom Szenario.
     quiet_mode: bool = False
     quiet_mode_reason: Optional[str] = None
+    # Presence-Gate (FLEET-212): normalisierter Presence-State + Roh-Quelle +
+    # ob Abwesenheit die Medienlogik gerade hart deaktiviert (Diagnose).
+    presence_state: str = PRES_UNKNOWN
+    presence_source: Optional[str] = None
+    away_gate: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -129,6 +142,9 @@ class MediaState:
             "active_reasons": list(self.active_reasons),
             "quiet_mode": self.quiet_mode,
             "quiet_mode_reason": self.quiet_mode_reason,
+            "presence_state": self.presence_state,
+            "presence_source": self.presence_source,
+            "away_gate": self.away_gate,
         }
 
 
@@ -143,6 +159,28 @@ def title_present(raw: Optional[str]) -> bool:
     if raw is None:
         return False
     return str(raw).strip().lower() not in NO_TITLE_VALUES
+
+
+# --------------------------------------------------------------------------- #
+# Presence-Gate (FLEET-212)
+# --------------------------------------------------------------------------- #
+def classify_presence(raw: Optional[str]) -> str:
+    """Roh-Presence → normalisierter State (zuhause/abwesend/unknown).
+
+    Defensiv: None/unknown/unavailable und unbekannte Werte werden als
+    `unknown` behandelt (NIE blind als zuhause). `bei_eltern` zählt als away —
+    Benni ist dann physisch nicht am Wohnzimmer-Media.
+    """
+    if raw is None:
+        return PRES_UNKNOWN
+    v = str(raw).strip().lower()
+    if v in ("", "unknown", "unavailable", "none"):
+        return PRES_UNKNOWN
+    if v in PRESENCE_HOME_STATES:
+        return PRES_HOME
+    if v in PRESENCE_AWAY_STATES:
+        return PRES_AWAY
+    return PRES_UNKNOWN
 
 
 # --------------------------------------------------------------------------- #
@@ -307,6 +345,26 @@ def decide(
 
     devices = detect_devices(inp)
     d.device = devices[0] if devices else DEV_NONE
+
+    # Presence-Gate (FLEET-212): Abwesenheit deaktiviert JEDE aktive Medienlogik.
+    # Höchste Priorität — überstimmt private_time/gaming/streaming/tv. Das Gerät
+    # bleibt zur Observability erkannt (Cockpit sieht, dass z.B. der TV noch an
+    # ist), aber Szenario→idle + entertainment_active=False signalisieren dem
+    # Apply-Layer, laufende Musik/Entertainment zu stoppen. `unknown`/nicht
+    # gebunden greift NICHT (kein Fehl-Stop bei Sensor-Aussetzern).
+    d.presence_state = classify_presence(inp.presence)
+    d.presence_source = inp.presence
+    if d.presence_state == PRES_AWAY:
+        d.away_gate = True
+        d.context = CTX_IDLE
+        d.subcontext = SUB_NONE
+        d.gaming_source = GS_NONE
+        d.gaming_platform = GP_NONE
+        d.headset_active = False
+        d.entertainment_active = False
+        reasons.append("away_gate")
+        d.active_reasons = reasons
+        return d
 
     # private_time hat höchste Szenario-Priorität (Lastenheft:
     # private_time > gaming > streaming/tv > idle).

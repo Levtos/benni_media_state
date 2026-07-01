@@ -25,14 +25,9 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_APPLETV_PLAYER,
     CONF_DEBOUNCE,
-    CONF_DENON_PLAYER,
     CONF_DIAGNOSTICS_VERBOSE,
-    CONF_HOMEPODS_PLAYER,
     CONF_PROFILE,
-    CONF_PS5_PLAYER,
-    CONF_TV_PLAYER,
     DEFAULT_DEBOUNCE,
     DEFAULT_DIAGNOSTICS_VERBOSE,
     DEFAULT_PROFILE,
@@ -43,23 +38,26 @@ from .const import (
     PROFILE_PREFILL,
     PROFILES,
     WATCH_KEYS,
+    source_domain_filter,
 )
 
-# --- Selektoren ---
-# Bewusst weitgehend ungefiltert (volle Flexibilität); nur die echten
-# Media-Player-Slots filtern auf media_player.
-_ENTITY = selector.EntitySelector(selector.EntitySelectorConfig())
-_PLAYER = selector.EntitySelector(selector.EntitySelectorConfig(domain="media_player"))
+# --- Selektoren (FLEET-212) ---
+# Domain-Filter kommt aus dem HA-freien Contract `source_domain_filter`:
+#   Player-Slots → nur `media_player` (lehnen Core-Devices-Sensoren ab),
+#   Master-Slots → `sensor`/`binary_sensor` (akzeptieren sensor.benni_master_*),
+#   Rest         → ungefiltert (volle Flexibilität für fremde Anlagen).
 _BOOL = selector.BooleanSelector()
 
-_PLAYER_KEYS = (
-    CONF_TV_PLAYER, CONF_APPLETV_PLAYER, CONF_PS5_PLAYER,
-    CONF_DENON_PLAYER, CONF_HOMEPODS_PLAYER,
-)
 
-SELECTORS: dict[str, Any] = {
-    key: (_PLAYER if key in _PLAYER_KEYS else _ENTITY) for key in WATCH_KEYS
-}
+def _selector_for(key: str) -> selector.EntitySelector:
+    domains = source_domain_filter(key)
+    if domains is None:
+        return selector.EntitySelector(selector.EntitySelectorConfig())
+    dom: Any = domains[0] if len(domains) == 1 else list(domains)
+    return selector.EntitySelector(selector.EntitySelectorConfig(domain=dom))
+
+
+SELECTORS: dict[str, Any] = {key: _selector_for(key) for key in WATCH_KEYS}
 
 # Entity-Slots (Override-fähig) = die Quell-Keys aus WATCH_KEYS.
 _ENTITY_SLOT_KEYS: tuple[str, ...] = WATCH_KEYS
