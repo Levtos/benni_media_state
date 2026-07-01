@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 — bei_eltern is Media Home-Equivalent
+
+- Treat raw presence `bei_eltern` as media home-equivalent instead of away.
+- Keep Away-Gate behavior for real absence (`abwesend`/`not_home`/generic away
+  values), but do not stop music just because Benni is at the parents.
+- Align Media State with the context/plug Lastenheft direction: `bei_eltern`
+  is not an Away-Cut trigger.
+
 ## 0.9.0 — FLEET-212: Presence-Away-Gate + Config-Domain-Split
 
 - **Presence-Gate:** `logic.decide` konsumiert jetzt core_state
