@@ -223,10 +223,11 @@ CONF_PRESENCE: Final = "presence_entity"
 CONF_HOUSEHOLD: Final = "household_entity"
 CONF_TRANSITION: Final = "transition_entity"
 CONF_DAY_STATE: Final = "day_state_entity"
-# private_time-Trigger (FLEET-31: zustandsbasiert ODER manuell)
+# private_time-Trigger (FLEET-31: zustandsbasiert ODER manuell). Der MANUELLE
+# Trigger ist jetzt eine native switch-Entität dieser Integration (switch.py),
+# kein externes input_boolean-Binding mehr → siehe UID_PRIVATE_MANUAL.
 CONF_STASH_STREAMS: Final = "stash_streams_entity"
 CONF_STASH_ENUM: Final = "stash_enum_entity"      # ETM Stash-Enum (FLEET-43)
-CONF_PRIVATE_MANUAL: Final = "private_manual_entity"
 
 # ReBind (FLEET-54): old core_devices Atomics/Combineds are obsolete once a
 # device master exists. Keep this map so saved ConfigEntry data/options that
@@ -255,7 +256,7 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_HOMEPODS_PLAYER,
     CONF_MEDIA_ENUM,
     CONF_QUIET_EXTERNAL, CONF_DOOR, CONF_CALL, CONF_ACTIVITY_STATE,
-    CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
+    CONF_STASH_STREAMS, CONF_STASH_ENUM,
     CONF_BIO_STATE, CONF_PRESENCE, CONF_HOUSEHOLD, CONF_TRANSITION, CONF_DAY_STATE,
 )
 
@@ -352,8 +353,8 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_STASH_STREAMS: "sensor.stash_active_streams",
         # Existenz-Filter bindet automatisch, sobald die Entity in HA existiert.
         CONF_STASH_ENUM: "sensor.title_classifier_stash_enum",
-        # Dating-/Besuch-Schalter (FLEET-44): manueller private_time-Trigger.
-        CONF_PRIVATE_MANUAL: "input_boolean.media_private_time_manual",
+        # Dating-/Besuch-Schalter (FLEET-44): jetzt native switch-Entität
+        # (switch.py), kein input_boolean-Binding mehr.
     },
     PROFILE_ELTERN: {},
 }
@@ -406,6 +407,14 @@ UID_QUIET_MODE_REASON: Final[str] = "quiet_mode_reason"
 # Presence-Gate (FLEET-212): sichtbarer Presence-State-Sensor + Away-Gate-Binary.
 UID_PRESENCE_STATE: Final[str] = "presence_state"
 UID_AWAY_GATE: Final[str] = "away_gate"
+# Nativer Private-Time-Manual-Schalter (FLEET-44) — ersetzt den externen
+# input_boolean. NICHT die Nintendo Switch (die ist CONF_SWITCH_ACTIVE).
+UID_PRIVATE_MANUAL: Final[str] = "private_time_manual"
+# Auto-Löschung des manuellen private_time-Latch nach Timeout (FLEET-98).
+# 0 = nur Einschlaf-Clear, kein Timeout. 4 h wie zuvor in media_apply.
+PRIVATE_MANUAL_TIMEOUT_SECONDS: Final[float] = 14400.0
+# bio_state-Werte, die als „Einschlafen" den private_time-Latch räumen.
+BIO_SLEEP_VALUES: Final[frozenset[str]] = frozenset({"sleep", "asleep"})
 
 # Attribute, die der reiche Context-Sensor zusätzlich zum State zeigt.
 CONTEXT_ATTRS: Final[tuple[str, ...]] = (

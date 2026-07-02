@@ -49,7 +49,6 @@ from .const import (
     CONF_PC_ENUM,
     CONF_PC_RAW,
     CONF_PRESENCE,
-    CONF_PRIVATE_MANUAL,
     CONF_PROFILE,
     CONF_PS5_ACTIVE,
     CONF_PS5_ENUM,
@@ -72,6 +71,7 @@ from .const import (
     DOMAIN,
     GP_PS5,
     LEGACY_ENTITY_REPOINTS,
+    PRIVATE_MANUAL_TIMEOUT_SECONDS,
     PROFILE_PREFILL,
     PROFILES,
     WATCH_KEYS,
@@ -131,6 +131,12 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._manual_nudge: str | None = None
         # Away-Gate ON-Debounce: monotone Startzeit des aktuellen Away-Fensters.
         self._away_since: float | None = None
+        # Nativer private_time-Manual-Latch (FLEET-44/98): Zustand + Auto-Clear.
+        # Gesetzt/gelesen über die switch-Entität (switch.py); Auto-Clear bei
+        # Einschlaf-Flanke (bio_state) und nach Timeout.
+        self._private_manual: bool = False
+        self._private_timeout_unsub: CALLBACK_TYPE | None = None
+        self._last_bio_state: str | None = None
 
     # ----- profile / binding -----
     @property
@@ -202,6 +208,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 async_track_state_change_event(self.hass, watched, self._on_state_change)
             )
         self.entry.async_on_unload(self._cancel_pending)
+        self.entry.async_on_unload(self._cancel_private_timeout)
 
     @callback
     def _cancel_pending(self) -> None:
@@ -228,6 +235,49 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_set_manual_nudge(self, subcontext: str | None) -> None:
         self._manual_nudge = subcontext or None
         self.async_set_updated_data(self._compute())
+
+    # ----- private_time manual latch (native switch, FLEET-44/98) -----
+    @property
+    def private_manual(self) -> bool:
+        return self._private_manual
+
+    def restore_private_manual(self, on: bool) -> None:
+        """Persistenten Zustand beim Start übernehmen (aus RestoreEntity)."""
+        self._private_manual = on
+        if on:
+            self._schedule_private_timeout()
+        self.async_set_updated_data(self._compute())
+
+    async def async_set_private_manual(self, on: bool) -> None:
+        """Von der switch-Entität aufgerufen (turn_on/off)."""
+        self._private_manual = on
+        self._cancel_private_timeout()
+        if on:
+            self._schedule_private_timeout()
+        self.async_set_updated_data(self._compute())
+
+    @callback
+    def _schedule_private_timeout(self) -> None:
+        self._cancel_private_timeout()
+        if PRIVATE_MANUAL_TIMEOUT_SECONDS <= 0:   # 0 = nur Einschlaf-Clear
+            return
+        self._private_timeout_unsub = async_call_later(
+            self.hass, PRIVATE_MANUAL_TIMEOUT_SECONDS, self._on_private_timeout
+        )
+
+    @callback
+    def _cancel_private_timeout(self) -> None:
+        if self._private_timeout_unsub is not None:
+            self._private_timeout_unsub()
+            self._private_timeout_unsub = None
+
+    @callback
+    def _on_private_timeout(self, _now) -> None:
+        self._private_timeout_unsub = None
+        if self._private_manual:
+            _LOGGER.info("media_state: private_time-Latch Timeout → auto-clear")
+            self._private_manual = False
+            self.async_set_updated_data(self._compute())
 
     # ----- reads -----
     def _state(self, key: str) -> str | None:
@@ -454,11 +504,21 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             away_gated=away_gated,
             stash_streams=_opt_int(self._state(CONF_STASH_STREAMS)),
             stash_enum=_opt_int(self._state(CONF_STASH_ENUM)),
-            private_manual=_bool(self._state(CONF_PRIVATE_MANUAL)),
+            private_manual=self._private_manual,
             manual_nudge=self._manual_nudge,
         )
 
     def _compute(self) -> dict[str, Any]:
+        # FLEET-98: manuellen private_time-Latch beim Einschlafen räumen
+        # (Einschlaf-Flanke des bio_state). Vor dem Input-Bau, damit derselbe
+        # Tick schon ohne private_time rechnet.
+        bio = self._state(CONF_BIO_STATE)
+        if logic.should_clear_private_on_sleep(bio, self._last_bio_state, self._private_manual):
+            _LOGGER.info("media_state: private_time-Latch Einschlaf-Clear")
+            self._private_manual = False
+            self._cancel_private_timeout()
+        self._last_bio_state = bio
+
         inputs = self._build_inputs()
         state = logic.decide(
             inputs,

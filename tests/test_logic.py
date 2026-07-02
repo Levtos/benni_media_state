@@ -215,6 +215,26 @@ def test_private_via_manual_switch():
     assert "private:manual_switch" in d.active_reasons
 
 
+# --- native private_time-Switch: Einschlaf-Auto-Clear (FLEET-98) ----------
+def test_private_cleared_on_sleep_edge():
+    # Flanke awake→sleep bei aktivem Latch → räumen.
+    assert L.should_clear_private_on_sleep("sleep", "awake", True) is True
+
+
+def test_private_not_cleared_without_latch():
+    assert L.should_clear_private_on_sleep("sleep", "awake", False) is False
+
+
+def test_private_not_cleared_on_sustained_sleep():
+    # Kein Flanken-Übergang (schon sleep) → nicht dauerhaft blocken.
+    assert L.should_clear_private_on_sleep("sleep", "sleep", True) is False
+
+
+def test_private_not_cleared_when_awake():
+    assert L.should_clear_private_on_sleep("awake", "awake", True) is False
+    assert L.should_clear_private_on_sleep("waking", "sleep", True) is False
+
+
 def test_private_beats_gaming():
     # Priorität: private_time > gaming (Stash läuft auf dem PC — der PC-Titel
     # darf das Szenario nicht kapern).
