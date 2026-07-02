@@ -50,6 +50,7 @@ from .const import (
     GS_NONE,
     GS_PC,
     GS_TV,
+    BIO_SLEEP_VALUES,
     NO_TITLE_VALUES,
     PRES_AWAY,
     PRES_HOME,
@@ -220,6 +221,19 @@ def presence_state_from_away(raw_away: Optional[bool], gated_away: bool) -> str:
     if raw_away is None:
         return PRES_UNKNOWN
     return PRES_HOME
+
+
+def should_clear_private_on_sleep(
+    bio_state: Optional[str], last_bio_state: Optional[str], private_manual: bool
+) -> bool:
+    """FLEET-98: Der manuelle private_time-Latch wird beim Einschlafen geräumt
+    (du schläfst = kein Dating/Besuch). Nur auf der FLANKE in einen Sleep-Wert,
+    damit ein durchgehender Sleep-State ihn nicht dauerhaft blockiert."""
+    if not private_manual:
+        return False
+    b = (bio_state or "").strip().lower()
+    lb = (last_bio_state or "").strip().lower()
+    return b in BIO_SLEEP_VALUES and lb not in BIO_SLEEP_VALUES
 
 
 # --------------------------------------------------------------------------- #

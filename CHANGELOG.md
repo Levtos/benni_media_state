@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0 — Nativer Private-Time-Schalter (kein input_boolean/YAML mehr)
+
+- **`switch.<profil>_media_state_private_time_manual`** neu: integration-eigene
+  Schalt-Entität für den manuellen private_time-Trigger (Dating/Besuch,
+  FLEET-44). Ersetzt den externen `input_boolean.media_private_time_manual`
+  (verschwunden seit gestern) — nativ, kein YAML-Helfer, kein externes Binding.
+  Zustand coordinator-backed + über RestoreEntity persistent.
+- **Auto-Löschung** (FLEET-98) von media_apply hierher gezogen: der Latch räumt
+  sich beim Einschlafen (bio_state-Flanke) und nach Timeout (4 h) selbst.
+- Externes `private_manual_entity`-Binding entfernt (WATCH-Keys + Prefill) → die
+  `[missing]`-Bindungsprobleme im Diagnostics-Tab verschwinden.
+- NB: unberührt von der Nintendo Switch (`sensor.benni_master_switch`).
+
 ## 0.10.1 — Away aus presence_personal ableiten (stabile Entity-ID)
 
 - **Hotfix zu 0.10.0.** Der in 0.10.0 eingeführte Slot `away_source_entity` zeigte
