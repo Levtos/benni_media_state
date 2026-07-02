@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0 — Echo core_state presence (one owner) + Away-Debounce
+
+- **Keine eigene home/away-Klassifikation mehr.** `PRESENCE_HOME_STATES`/
+  `PRESENCE_AWAY_STATES` und `classify_presence` entfernt. media_state
+  konsumiert stattdessen die kanonische Fleet-Entscheidung
+  `binary_sensor.benni_core_state_away` (core_state ≥ v0.6.0) über den neuen
+  Slot `away_source_entity`. Damit gibt es genau EINEN Owner der
+  Presence-Semantik — das behebt die `bei_eltern`-Fehlklassifikations-Klasse an
+  der Wurzel (core_state kodiert bei_eltern bereits als home/off).
+- **ON-Debounce** (`AWAY_DEBOUNCE_SECONDS`, 25 s): Away muss stabil anliegen,
+  bevor das Media-Gate greift — ein transienter Away-Dip reißt die Audio-Kette
+  nicht mehr ab (Defense-in-Depth; die HA-Restart-Flap-Wurzel ist in
+  core_state v0.6.0 behoben). Rückkehr (→home) wirkt sofort.
+- Contract der Ausgabe-Entities (`presence_state`, `presence_source`,
+  `away_gate`) unverändert → policy/apply-Bindings brauchen keine Änderung.
+  `presence_entity` (presence_personal) bleibt gebunden, dient jetzt nur noch
+  der Roh-Quellen-Anzeige (`presence_source`).
+
 ## 0.9.1 — bei_eltern is Media Home-Equivalent
 
 - Treat raw presence `bei_eltern` as media home-equivalent instead of away.

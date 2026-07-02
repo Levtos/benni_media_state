@@ -54,8 +54,6 @@ from .const import (
     PRES_AWAY,
     PRES_HOME,
     PRES_UNKNOWN,
-    PRESENCE_AWAY_STATES,
-    PRESENCE_HOME_STATES,
     SUB_GAME_DEFAULT,
     SUB_GAME_GRIND,
     SUB_GAME_HEADSET,
@@ -98,9 +96,14 @@ class Inputs:
     door_open: bool = False
     call_active: bool = False
     activity_state: Optional[str] = None
-    # Presence-Gate (FLEET-212): Roh-State von core_state presence_personal.
-    # None = nicht gebunden/unknown → kein Gate (defensiv, kein Fehl-Stop).
+    # Presence-Gate: core_state ist alleiniger Owner. `presence` = Roh-Quelle
+    # (core_state presence_personal) NUR fürs Cockpit-Display. Die Entscheidung
+    # kommt aus `binary_sensor.benni_core_state_away`: `away_raw` = dessen roher
+    # Boolean (None = ungebunden/unknown → kein Gate), `away_gated` = derselbe
+    # Boolean nach ON-Debounce (Coordinator). Nur `away_gated` schaltet.
     presence: Optional[str] = None
+    away_raw: Optional[bool] = None
+    away_gated: bool = False
     # private_time-Trigger (FLEET-31)
     stash_streams: Optional[int] = None
     stash_enum: Optional[int] = None
@@ -162,25 +165,42 @@ def title_present(raw: Optional[str]) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Presence-Gate (FLEET-212)
+# Presence-Gate — echo core_state, no own classification.
 # --------------------------------------------------------------------------- #
-def classify_presence(raw: Optional[str]) -> str:
-    """Roh-Presence → normalisierter State (zuhause/abwesend/unknown).
+def gate_away(
+    raw_away: Optional[bool],
+    away_since: Optional[float],
+    now: float,
+    debounce_s: float,
+) -> tuple[bool, Optional[float]]:
+    """ON-Debounce für den Away-Gate. Pure + testbar.
 
-    Defensiv: None/unknown/unavailable und unbekannte Werte werden als
-    `unknown` behandelt (NIE blind als zuhause). `bei_eltern` ist fuer Media
-    home-equivalent und darf keinen Away-Cut ausloesen.
+    Away (`raw_away is True`) muss ``debounce_s`` durchgehend anliegen, bevor
+    das Gate greift — ein transienter Away-Dip reißt so die Audio-Kette nicht
+    ab. Jeder Nicht-Away-Tick (`False`/`None`) setzt den Timer zurück und öffnet
+    das Gate sofort (Musik-Resume bei Rückkehr wirkt ohne Verzögerung).
+
+    Return: ``(gated_away, new_away_since)`` — ``away_since`` als monotone
+    Startzeit weiterreichen (Coordinator hält sie als Instanz-State).
     """
-    if raw is None:
-        return PRES_UNKNOWN
-    v = str(raw).strip().lower()
-    if v in ("", "unknown", "unavailable", "none"):
-        return PRES_UNKNOWN
-    if v in PRESENCE_HOME_STATES:
-        return PRES_HOME
-    if v in PRESENCE_AWAY_STATES:
+    if raw_away is True:
+        since = away_since if away_since is not None else now
+        return (now - since) >= debounce_s, since
+    return False, None
+
+
+def presence_state_from_away(raw_away: Optional[bool], gated_away: bool) -> str:
+    """Cockpit-Presence-State aus dem core_state-Away-Gate.
+
+    `gated_away` → abwesend. Sonst: ungebunden/unknown (`raw_away is None`) →
+    unknown (kein Fehl-Stop), sonst zuhause. Keine eigene Semantik — bei_eltern
+    ist bereits im core_state-Gate als home (off) kodiert.
+    """
+    if gated_away:
         return PRES_AWAY
-    return PRES_UNKNOWN
+    if raw_away is None:
+        return PRES_UNKNOWN
+    return PRES_HOME
 
 
 # --------------------------------------------------------------------------- #
@@ -346,15 +366,16 @@ def decide(
     devices = detect_devices(inp)
     d.device = devices[0] if devices else DEV_NONE
 
-    # Presence-Gate (FLEET-212): Abwesenheit deaktiviert JEDE aktive Medienlogik.
-    # Höchste Priorität — überstimmt private_time/gaming/streaming/tv. Das Gerät
-    # bleibt zur Observability erkannt (Cockpit sieht, dass z.B. der TV noch an
-    # ist), aber Szenario→idle + entertainment_active=False signalisieren dem
-    # Apply-Layer, laufende Musik/Entertainment zu stoppen. `unknown`/nicht
-    # gebunden greift NICHT (kein Fehl-Stop bei Sensor-Aussetzern).
-    d.presence_state = classify_presence(inp.presence)
+    # Presence-Gate: Abwesenheit deaktiviert JEDE aktive Medienlogik. Höchste
+    # Priorität — überstimmt private_time/gaming/streaming/tv. Das Gerät bleibt
+    # zur Observability erkannt (Cockpit sieht, dass z.B. der TV noch an ist),
+    # aber Szenario→idle + entertainment_active=False signalisieren dem
+    # Apply-Layer, laufende Musik/Entertainment zu stoppen. Die Away-Wahrheit ist
+    # der debouncte core_state-Gate (`away_gated`); `unknown`/nicht gebunden
+    # greift NICHT (kein Fehl-Stop bei Sensor-Aussetzern).
+    d.presence_state = presence_state_from_away(inp.away_raw, inp.away_gated)
     d.presence_source = inp.presence
-    if d.presence_state == PRES_AWAY:
+    if inp.away_gated:
         d.away_gate = True
         d.context = CTX_IDLE
         d.subcontext = SUB_NONE
