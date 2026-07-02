@@ -35,7 +35,6 @@ from .const import (
     CONF_ACTIVITY_STATE,
     CONF_APPLETV_MASTER,
     CONF_APPLETV_PLAYER,
-    CONF_AWAY_SOURCE,
     CONF_BIO_STATE,
     CONF_CALL,
     CONF_DAY_STATE,
@@ -409,9 +408,11 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         ps5_title = self._attr(CONF_PS5_PLAYER, "media_title") or self._state(CONF_PS5_TITLE)
 
-        # Away-Gate: rohe core_state-Entscheidung + ON-Debounce (kein Fehl-Stop
-        # bei einem transienten Away-Dip). `_away_since` trägt das Fenster.
-        away_raw = _opt_bool(self._state(CONF_AWAY_SOURCE))
+        # Away-Gate: aus core_states presence_personal-Enum abgeleitet (stabile
+        # Entity-ID, retained seit core_state v0.6.0) + ON-Debounce (kein
+        # Fehl-Stop bei einem transienten Away-Dip). `_away_since` trägt das
+        # Fenster. Keine eigene Klassifikation — strikt an core_states 3 Werte.
+        away_raw = logic.away_from_presence(self._state(CONF_PRESENCE))
         away_gated, self._away_since = logic.gate_away(
             away_raw, self._away_since, time.monotonic(), AWAY_DEBOUNCE_SECONDS
         )

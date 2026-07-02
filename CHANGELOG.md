@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.1 — Away aus presence_personal ableiten (stabile Entity-ID)
+
+- **Hotfix zu 0.10.0.** Der in 0.10.0 eingeführte Slot `away_source_entity` zeigte
+  auf `binary_sensor.benni_core_state_away` — der reale Entity-Slug ist aber
+  geräteabhängig (die core_state-Devices sind zu „System …" umbenannt → neue
+  Entitäten erben `system_`-Präfix, z.B. `binary_sensor.system_benni_core_state_presence_away`).
+  Damit war die Bindung `[missing]` → `presence_state=unknown` → Policy blockte
+  die Musik-Baseline (Musik blieb aus).
+- Fix: `away_source_entity` **entfernt**. media_state leitet den Away-Gate jetzt
+  strikt aus core_states `presence_personal`-Enum ab (`abwesend` → away;
+  `zuhause`/`bei_eltern` → home; sonst kein Gate) — stabile, saubere Entity-ID
+  (`sensor.benni_core_state_presence_personal`), retained seit core_state v0.6.0.
+  Immer noch EIN Presence-Owner (core_state), nur an der robusteren Quelle.
+- ON-Debounce (`gate_away`, 25 s) unverändert. Output-Contract unverändert.
+
 ## 0.10.0 — Echo core_state presence (one owner) + Away-Debounce
 
 - **Keine eigene home/away-Klassifikation mehr.** `PRESENCE_HOME_STATES`/

@@ -167,6 +167,25 @@ def title_present(raw: Optional[str]) -> bool:
 # --------------------------------------------------------------------------- #
 # Presence-Gate — echo core_state, no own classification.
 # --------------------------------------------------------------------------- #
+def away_from_presence(presence: Optional[str]) -> Optional[bool]:
+    """core_state presence_personal → Away-Boolean. KEINE eigene Detektion.
+
+    Bindet sich strikt an core_states 3-Wert-Enum (`zuhause`/`bei_eltern`/
+    `abwesend`) statt an eine breite Fallback-Menge — so kann media_state nie
+    von core_states Entscheidung abweichen (Wurzel des alten bei_eltern-Bugs).
+    `abwesend` → away; `zuhause`/`bei_eltern` → home; alles andere (None/
+    unknown/unavailable/Fremdwert) → None = kein Gate (kein Fehl-Stop).
+    """
+    if presence is None:
+        return None
+    v = str(presence).strip().lower()
+    if v == PRES_AWAY:
+        return True
+    if v in (PRES_HOME, "bei_eltern"):
+        return False
+    return None
+
+
 def gate_away(
     raw_away: Optional[bool],
     away_since: Optional[float],
