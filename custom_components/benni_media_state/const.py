@@ -79,12 +79,12 @@ SUB_GAME_HEADSET: Final = "gaming_headset"
 
 # --------------------------------------------------------------------------- #
 # Presence-Gate. media_state klassifiziert NICHT mehr selbst home/away — die
-# Presence-Semantik hat genau EINEN Owner: core_state. media_state konsumiert
-# dessen fertige Entscheidung `binary_sensor.benni_core_state_away`
-# (on ⇔ abwesend; zuhause/bei_eltern ⇒ off) und echo't sie hier als Media-Gate.
-# Ein kurzer ON-Debounce (AWAY_DEBOUNCE_SECONDS) glättet Rest-Transienten, damit
-# ein Sub-N-Sekunden-Dip die Audio-Kette nicht abreißt (Defense-in-Depth; die
-# eigentliche Restart-Flap-Wurzel ist in core_state v0.6.0 behoben).
+# Presence-Semantik hat genau EINEN Owner: core_state. media_state leitet den
+# Away-Gate strikt aus core_states `presence_personal`-Enum ab (`abwesend` →
+# away; `zuhause`/`bei_eltern` → home; sonst → kein Gate) — stabile Entity-ID,
+# retained seit core_state v0.6.0, keine breite Fallback-Menge, die abweichen
+# könnte. Ein kurzer ON-Debounce (AWAY_DEBOUNCE_SECONDS) glättet Rest-
+# Transienten, damit ein Sub-N-Sekunden-Dip die Audio-Kette nicht abreißt.
 #
 # Normalisierte Ausgabe-States des presence_state-Sensors (Contract unverändert):
 PRES_HOME: Final = "zuhause"
@@ -217,9 +217,9 @@ CONF_ACTIVITY_STATE: Final = "activity_state_entity"
 # Kontext-Echo (FLEET-69): core_state-Felder fürs Cockpit anzeigen (read-only,
 # keine Entscheidung — "State sieht den Kontext"). Auto-Bind via PROFILE_PREFILL.
 CONF_BIO_STATE: Final = "bio_state_entity"
+# presence_personal (core_state) = DIE Presence-Entscheidung. media_state leitet
+# den Away-Gate strikt aus diesem 3-Wert-Enum ab (kein eigenes Klassifizieren).
 CONF_PRESENCE: Final = "presence_entity"
-# Kanonischer Away-Gate aus core_state (v0.6.0): DIE Presence-Entscheidung.
-CONF_AWAY_SOURCE: Final = "away_source_entity"
 CONF_HOUSEHOLD: Final = "household_entity"
 CONF_TRANSITION: Final = "transition_entity"
 CONF_DAY_STATE: Final = "day_state_entity"
@@ -256,8 +256,7 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_MEDIA_ENUM,
     CONF_QUIET_EXTERNAL, CONF_DOOR, CONF_CALL, CONF_ACTIVITY_STATE,
     CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
-    CONF_BIO_STATE, CONF_PRESENCE, CONF_AWAY_SOURCE, CONF_HOUSEHOLD,
-    CONF_TRANSITION, CONF_DAY_STATE,
+    CONF_BIO_STATE, CONF_PRESENCE, CONF_HOUSEHOLD, CONF_TRANSITION, CONF_DAY_STATE,
 )
 
 # --------------------------------------------------------------------------- #
@@ -285,7 +284,6 @@ MASTER_KEYS: Final[tuple[str, ...]] = (
     CONF_SWITCH_ACTIVE,
     CONF_PC_ACTIVE,
     CONF_DENON_ACTIVE,
-    CONF_AWAY_SOURCE,
 )
 
 
@@ -348,7 +346,6 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         # Kontext-Echo (FLEET-69) → core_state.
         CONF_BIO_STATE: "sensor.benni_core_state_bio_state",
         CONF_PRESENCE: "sensor.benni_core_state_presence_personal",
-        CONF_AWAY_SOURCE: "binary_sensor.benni_core_state_away",
         CONF_HOUSEHOLD: "sensor.benni_core_state_presence_household",
         CONF_TRANSITION: "sensor.benni_core_state_presence_transition",
         CONF_DAY_STATE: "sensor.benni_core_state_day_state",

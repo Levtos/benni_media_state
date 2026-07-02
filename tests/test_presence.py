@@ -19,6 +19,32 @@ def _inp(**kw):
     return L.Inputs(**kw)
 
 
+# ------------------------------------------------------- away_from_presence
+
+
+def test_away_from_presence_maps_core_state_enum():
+    assert L.away_from_presence("abwesend") is True
+    assert L.away_from_presence("zuhause") is False
+    assert L.away_from_presence("bei_eltern") is False
+
+
+def test_away_from_presence_unknown_is_none():
+    for raw in (None, "", "unknown", "unavailable", "none"):
+        assert L.away_from_presence(raw) is None, raw
+
+
+def test_away_from_presence_ignores_foreign_values():
+    # Kein breites Fallback-Set mehr: Fremdwerte gaten nicht (kein Fehl-Stop),
+    # nur core_states exaktes Enum zählt.
+    for raw in ("not_home", "off", "away", "home", "on", "0", "1"):
+        assert L.away_from_presence(raw) is None, raw
+
+
+def test_away_from_presence_is_case_tolerant():
+    assert L.away_from_presence("  AbWeSend ") is True
+    assert L.away_from_presence("BEI_ELTERN") is False
+
+
 # ------------------------------------------------- presence_state_from_away
 
 
