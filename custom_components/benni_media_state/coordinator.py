@@ -17,6 +17,7 @@ zwei zustandsbehafteten Krücken, damit logic.decide() pure bleibt:
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -30,9 +31,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from . import logic
 from .const import (
+    AWAY_DEBOUNCE_SECONDS,
     CONF_ACTIVITY_STATE,
     CONF_APPLETV_MASTER,
     CONF_APPLETV_PLAYER,
+    CONF_AWAY_SOURCE,
     CONF_BIO_STATE,
     CONF_CALL,
     CONF_DAY_STATE,
@@ -127,6 +130,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sticky_gaming_sub: str | None = None
         # Manueller Subcontext-Override (Service-Fläche, optional).
         self._manual_nudge: str | None = None
+        # Away-Gate ON-Debounce: monotone Startzeit des aktuellen Away-Fensters.
+        self._away_since: float | None = None
 
     # ----- profile / binding -----
     @property
@@ -404,6 +409,13 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         ps5_title = self._attr(CONF_PS5_PLAYER, "media_title") or self._state(CONF_PS5_TITLE)
 
+        # Away-Gate: rohe core_state-Entscheidung + ON-Debounce (kein Fehl-Stop
+        # bei einem transienten Away-Dip). `_away_since` trägt das Fenster.
+        away_raw = _opt_bool(self._state(CONF_AWAY_SOURCE))
+        away_gated, self._away_since = logic.gate_away(
+            away_raw, self._away_since, time.monotonic(), AWAY_DEBOUNCE_SECONDS
+        )
+
         return logic.Inputs(
             tv_active=tv_active,
             tv_source=self._attr(CONF_TV_PLAYER, "source"),
@@ -433,8 +445,12 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             door_open=_bool(self._state(CONF_DOOR)),
             call_active=_bool(self._state(CONF_CALL)),
             activity_state=self._state(CONF_ACTIVITY_STATE),
-            # Presence-Gate (FLEET-212): Roh-State aus core_state presence_personal.
+            # Presence-Gate: core_state ist Owner. `presence` = Roh-Quelle nur
+            # fürs Cockpit; die Away-Entscheidung kommt aus dem kanonischen
+            # core_state-Gate, ON-debounced (siehe unten).
             presence=self._state(CONF_PRESENCE),
+            away_raw=away_raw,
+            away_gated=away_gated,
             stash_streams=_opt_int(self._state(CONF_STASH_STREAMS)),
             stash_enum=_opt_int(self._state(CONF_STASH_ENUM)),
             private_manual=_bool(self._state(CONF_PRIVATE_MANUAL)),

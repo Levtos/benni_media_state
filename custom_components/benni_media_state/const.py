@@ -78,24 +78,21 @@ SUB_GAME_GRIND: Final = "gaming_grind"
 SUB_GAME_HEADSET: Final = "gaming_headset"
 
 # --------------------------------------------------------------------------- #
-# Presence-Gate (FLEET-212). media_state konsumiert core_state
-# presence_personal als harten Gate: Abwesenheit deaktiviert jede aktive
-# Medienlogik (context→idle, entertainment_active=False), damit der Apply-Layer
-# laufende Musik/Entertainment stoppt statt weiterzufahren.
+# Presence-Gate. media_state klassifiziert NICHT mehr selbst home/away — die
+# Presence-Semantik hat genau EINEN Owner: core_state. media_state konsumiert
+# dessen fertige Entscheidung `binary_sensor.benni_core_state_away`
+# (on ⇔ abwesend; zuhause/bei_eltern ⇒ off) und echo't sie hier als Media-Gate.
+# Ein kurzer ON-Debounce (AWAY_DEBOUNCE_SECONDS) glättet Rest-Transienten, damit
+# ein Sub-N-Sekunden-Dip die Audio-Kette nicht abreißt (Defense-in-Depth; die
+# eigentliche Restart-Flap-Wurzel ist in core_state v0.6.0 behoben).
 #
-# Normalisierte Ausgabe-States des presence_state-Sensors:
+# Normalisierte Ausgabe-States des presence_state-Sensors (Contract unverändert):
 PRES_HOME: Final = "zuhause"
 PRES_AWAY: Final = "abwesend"
 PRES_UNKNOWN: Final = "unknown"
-# Roh-States der Quelle (core_state presence_personal + generische Fallbacks),
-# lowercase-Vergleich. `bei_eltern` ist home-equivalent fuer Media: keine
-# Away-Cut-Logik, kein Musik-Stopp. Echte Away-Cuts nur bei `abwesend`/not_home.
-PRESENCE_HOME_STATES: Final = frozenset(
-    {"zuhause", "bei_eltern", "home", "on", "true", "1", "present"}
-)
-PRESENCE_AWAY_STATES: Final = frozenset(
-    {"abwesend", "not_home", "not home", "off", "false", "0", "away"}
-)
+# ON-Debounce für den Away-Gate (Sekunden): Away muss so lange stabil anliegen,
+# bevor das Media-Gate greift. Rückkehr (→home) wirkt sofort (Musik-Resume).
+AWAY_DEBOUNCE_SECONDS: Final = 25.0
 
 # ---- Geräte ----
 DEV_NONE: Final = "none"
@@ -221,6 +218,8 @@ CONF_ACTIVITY_STATE: Final = "activity_state_entity"
 # keine Entscheidung — "State sieht den Kontext"). Auto-Bind via PROFILE_PREFILL.
 CONF_BIO_STATE: Final = "bio_state_entity"
 CONF_PRESENCE: Final = "presence_entity"
+# Kanonischer Away-Gate aus core_state (v0.6.0): DIE Presence-Entscheidung.
+CONF_AWAY_SOURCE: Final = "away_source_entity"
 CONF_HOUSEHOLD: Final = "household_entity"
 CONF_TRANSITION: Final = "transition_entity"
 CONF_DAY_STATE: Final = "day_state_entity"
@@ -257,7 +256,8 @@ WATCH_KEYS: Final[tuple[str, ...]] = (
     CONF_MEDIA_ENUM,
     CONF_QUIET_EXTERNAL, CONF_DOOR, CONF_CALL, CONF_ACTIVITY_STATE,
     CONF_STASH_STREAMS, CONF_STASH_ENUM, CONF_PRIVATE_MANUAL,
-    CONF_BIO_STATE, CONF_PRESENCE, CONF_HOUSEHOLD, CONF_TRANSITION, CONF_DAY_STATE,
+    CONF_BIO_STATE, CONF_PRESENCE, CONF_AWAY_SOURCE, CONF_HOUSEHOLD,
+    CONF_TRANSITION, CONF_DAY_STATE,
 )
 
 # --------------------------------------------------------------------------- #
@@ -285,6 +285,7 @@ MASTER_KEYS: Final[tuple[str, ...]] = (
     CONF_SWITCH_ACTIVE,
     CONF_PC_ACTIVE,
     CONF_DENON_ACTIVE,
+    CONF_AWAY_SOURCE,
 )
 
 
@@ -347,6 +348,7 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         # Kontext-Echo (FLEET-69) → core_state.
         CONF_BIO_STATE: "sensor.benni_core_state_bio_state",
         CONF_PRESENCE: "sensor.benni_core_state_presence_personal",
+        CONF_AWAY_SOURCE: "binary_sensor.benni_core_state_away",
         CONF_HOUSEHOLD: "sensor.benni_core_state_presence_household",
         CONF_TRANSITION: "sensor.benni_core_state_presence_transition",
         CONF_DAY_STATE: "sensor.benni_core_state_day_state",
