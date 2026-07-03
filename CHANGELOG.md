@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.1 — ETM-Idle-Sentinel "idle" als „kein Titel" (Bias-Light-Fix)
+
+- **Fix falsches `gaming:pc` → Bias Light (live 2026-07-03):** `title_classifier`
+  v2.11.0 zeigt den PC-Raw-Sensor im Leerlauf jetzt als konfigurierbaren Sentinel
+  `"idle"` (statt `unknown`). Der PC-Gaming-Gate läuft **nur** über die Titel-Ebene
+  (`title_present(pc_raw)`), und `NO_TITLE_VALUES` kannte `"idle"` nicht → der
+  Leerlauf-String wurde als echter Titel gewertet → `gaming:pc` →
+  `entertainment_active` → plug_policy schaltete das Bias Light ein, obwohl der PC
+  nur idle war (Enum blieb korrekt 0).
+- **`"idle"` in `NO_TITLE_VALUES` aufgenommen** — zählt jetzt wie
+  `"No Game"`/`unknown`/leer als „kein Titel". Reiner Consumer-seitiger
+  Contract-Fix; keine Logik-Änderung sonst. Regression-Tests ergänzt.
+
 ## 0.11.0 — Nativer Private-Time-Schalter (kein input_boolean/YAML mehr)
 
 - **`switch.<profil>_media_state_private_time_manual`** neu: integration-eigene

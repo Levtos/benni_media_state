@@ -97,6 +97,23 @@ def test_pc_no_game_raw_is_not_gaming():
     assert d.context == C.CTX_IDLE
 
 
+def test_pc_idle_raw_is_not_gaming():
+    # Regression (title_classifier v2.11.0): der Raw-Sensor zeigt im Leerlauf
+    # jetzt den Sentinel "idle" statt unknown. Der PC-Gaming-Gate (nur
+    # Titel-Ebene) darf das NICHT als echten Titel werten → sonst falsches
+    # gaming:pc → entertainment_active → Bias Light (live 2026-07-03).
+    d = L.decide(_inp(pc_active=True, pc_raw="idle", pc_enum=0))
+    assert d.context == C.CTX_IDLE
+    assert d.gaming_source == C.GS_NONE
+    assert d.entertainment_active is False
+
+
+def test_title_present_treats_idle_sentinel_as_no_title():
+    assert L.title_present("idle") is False
+    assert L.title_present("No Game") is False
+    assert L.title_present("Stardew Valley") is True
+
+
 def test_pc_title_with_enum_zero_is_valid_game():
     # Enum 0 ist gültiges Spiel (gaming_default) — "Enum >= 1"-Gate verworfen.
     d = L.decide(_inp(pc_active=True, pc_raw="Stardew Valley", pc_enum=0))
