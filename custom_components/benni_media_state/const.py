@@ -134,8 +134,14 @@ ENUM_GAME_HEADSET: Final = 2
 ENUM_MEDIA_MUTE: Final = 2
 
 # Raw-Werte, die als „kein Titel" gelten (lowercase-Vergleich). "No Game" ist
-# der ETM-Offline-/Leerlauf-Fallback (live verifiziert: pc_raw="No Game").
-NO_TITLE_VALUES: Final = frozenset({"", "no game", "unknown", "unavailable", "none"})
+# der historische ETM-Leerlauf-Fallback; "idle" ist der konfigurierbare
+# ETM-Idle-Sentinel ab title_classifier v2.11.0 (Default) — beide zählen wie
+# unknown/unavailable/leer als „kein Titel". Fehlte "idle" hier, wertete der
+# PC-Gaming-Gate (nur Titel-Ebene) den Leerlauf-String als echten Titel und
+# löste fälschlich gaming:pc → entertainment_active → Bias Light aus (v2.11.0).
+NO_TITLE_VALUES: Final = frozenset(
+    {"", "no game", "idle", "unknown", "unavailable", "none"}
+)
 
 # Apple-TV-System-Apps → Rollback aufs Pre-ATV-Szenario (Home, Settings, …).
 APPLETV_SYSTEM_APPS: Final = {
