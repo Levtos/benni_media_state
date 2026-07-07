@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.12.0 — Media Activity Context Feed (Producer-first für core_state)
+
+- **`sensor.benni_media_state_activity_context`** neu: additiver Media-Activity-Feed,
+  der die Media-Hälfte des Activity-States für core_state liefert. States:
+  `private_time`, `gaming`, `entertainment`, `music`, `idle`. Feed-interne
+  Priorität: `private_time` > `gaming` > `entertainment` > `music` > `idle`.
+- Der einzige inhaltliche Unterschied zu `media_context`: reines Audio
+  (HomePods playing / Denon active), das dort bewusst `idle` / `audio_only_idle`
+  bleibt (Licht-/Scene-Schutz), wird im neuen Feed als `music` sichtbar.
+- **Bestehende Outputs unverändert.** `media_context`, `media_subcontext`,
+  `media_device`, `gaming_source`, `gaming_platform`, `entertainment_active`,
+  `away_gate`, `quiet_mode(_reason)` und `private_time_manual` behalten Verhalten.
+- Diagnose-/Consumer-Attribute am neuen Sensor: `reason`, `hold_strength`
+  (`hard`/`soft`/`none`), `device`, `media_device`, `media_context`,
+  `media_subcontext`, `gaming_platform`, `gaming_source`, `private_time_active`,
+  `entertainment_active`, `music_active`, `homepods_playing`, `denon_active`;
+  optional `title`/`artist`/`game_title`/`source_app`, sofern ohne neue
+  Roh-Bindung verfügbar.
+- **Kein core_state-Change in diesem Release** (Producer-first, FLEET-255). Der
+  Feed hängt NICHT von core_state `activity_state` und NICHT von
+  `presence_effective` ab — nur von Roh-Media + rohem Away-Gate.
+
 ## 0.11.1 — ETM-Idle-Sentinel "idle" als „kein Titel" (Bias-Light-Fix)
 
 - **Fix falsches `gaming:pc` → Bias Light (live 2026-07-03):** `title_classifier`

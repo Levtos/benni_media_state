@@ -25,12 +25,20 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .const import (
+    ACTX_ENTERTAINMENT,
+    ACTX_GAMING,
+    ACTX_IDLE,
+    ACTX_MUSIC,
+    ACTX_PRIVATE,
     APPLETV_SYSTEM_APPS,
     CTX_GAMING,
     CTX_IDLE,
     CTX_PRIVATE,
     CTX_STREAMING,
     CTX_TV,
+    HOLD_HARD,
+    HOLD_NONE,
+    HOLD_SOFT,
     DEFAULT_APPLETV_APP_MAP,
     DEV_APPLETV,
     DEV_DENON,
@@ -487,3 +495,78 @@ def decide(
     d.entertainment_active = d.context in (CTX_TV, CTX_STREAMING, CTX_GAMING)
     d.active_reasons = reasons
     return d
+
+
+# --------------------------------------------------------------------------- #
+# Activity-Context-Feed (FLEET-255) — Media-Hälfte des Activity-States für
+# core_state. Additiv: leitet aus dem BEREITS berechneten MediaState + den
+# Roh-Inputs ab, ändert media_context/decide() nicht.
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class ActivityContext:
+    """Ergebnis des Media-Activity-Feeds: State + Diagnose + Consumer-Attribute."""
+
+    state: str
+    reason: str
+    hold_strength: str
+    attrs: dict[str, Any]
+
+
+def derive_activity_context(state: MediaState, inp: Inputs) -> ActivityContext:
+    """Media-Hälfte des Activity-States für core_state (FLEET-255).
+
+    Feed-interne Priorität: private_time > gaming > entertainment > music > idle.
+
+    Der einzige inhaltliche Unterschied zu ``media_context``: reines Audio
+    (HomePods playing / Denon active), das ``decide()`` bewusst als ``idle`` /
+    ``audio_only_idle`` führt (Licht-/Scene-Schutz, §4.1), wird HIER als
+    ``music`` sichtbar. Alle Screen-Szenarien werden 1:1 aus dem schon
+    berechneten ``state`` übernommen — keine Zweit-Detektion.
+
+    Der Away-Gate hat Vorrang (→ ``idle``), spiegelt ``media_context``: bei
+    Abwesenheit ist die Medienlogik hart deaktiviert.
+
+    Kein Rückgriff auf core_state ``activity_state`` oder ``presence_effective``
+    — nur ``state`` (aus Roh-Media + rohem Away-Gate) und ``inp`` fließen ein.
+    """
+    music_active = bool(inp.homepods_playing or inp.denon_active)
+    private_active = state.context == CTX_PRIVATE and not state.away_gate
+
+    def _result(feed_state: str, reason: str, hold: str) -> ActivityContext:
+        attrs = {
+            "reason": reason,
+            "hold_strength": hold,
+            "device": state.device,
+            "media_device": state.device,
+            "media_context": state.context,
+            "media_subcontext": state.subcontext,
+            "gaming_platform": state.gaming_platform,
+            "gaming_source": state.gaming_source,
+            "private_time_active": private_active,
+            "entertainment_active": bool(state.entertainment_active),
+            "music_active": music_active,
+            "homepods_playing": bool(inp.homepods_playing),
+            "denon_active": bool(inp.denon_active),
+        }
+        return ActivityContext(feed_state, reason, hold, attrs)
+
+    # Away-Gate zuerst: spiegelt media_context (alles idle bei Abwesenheit).
+    if state.away_gate:
+        return _result(ACTX_IDLE, "away_gate", HOLD_NONE)
+    # private_time: reiche bestehende Erkennung (Stash-Streams/-Enum/Manual)
+    # steckt schon in decide() → state.context == CTX_PRIVATE. Grund aus den
+    # bestehenden active_reasons durchreichen.
+    if state.context == CTX_PRIVATE:
+        reason = next(
+            (r for r in state.active_reasons if r.startswith("private:")),
+            "private:context",
+        )
+        return _result(ACTX_PRIVATE, reason, HOLD_HARD)
+    if state.context == CTX_GAMING:
+        return _result(ACTX_GAMING, f"gaming:{state.gaming_platform}", HOLD_HARD)
+    if state.context in (CTX_TV, CTX_STREAMING):
+        return _result(ACTX_ENTERTAINMENT, f"entertainment:{state.context}", HOLD_SOFT)
+    if music_active:
+        reason = "music:homepods" if inp.homepods_playing else "music:denon"
+        return _result(ACTX_MUSIC, reason, HOLD_SOFT)
+    return _result(ACTX_IDLE, "idle", HOLD_NONE)
