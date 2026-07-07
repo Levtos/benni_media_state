@@ -78,6 +78,32 @@ SUB_GAME_GRIND: Final = "gaming_grind"
 SUB_GAME_HEADSET: Final = "gaming_headset"
 
 # --------------------------------------------------------------------------- #
+# Activity-Context-Feed (FLEET-255): die Media-HÄLFTE des Activity-States für
+# core_state. Additiv — ändert media_context NICHT. Wo media_context Audio
+# bewusst als idle/audio_only_idle führt (Licht/Scene-Schutz), surfacet dieser
+# Feed dasselbe Audio als `music`. Der finale Gesamt-Activity-State bleibt bei
+# core_state (sleep > waking > private_time > gaming > entertainment > music >
+# work_home > household > pc_active > free_time > idle). Feed-interne Priorität:
+# private_time > gaming > entertainment > music > idle. Kein Rückgriff auf
+# core_state activity_state oder presence_effective (Zyklus-Freiheit).
+# --------------------------------------------------------------------------- #
+ACTX_IDLE: Final = "idle"
+ACTX_MUSIC: Final = "music"
+ACTX_ENTERTAINMENT: Final = "entertainment"
+ACTX_GAMING: Final = "gaming"
+ACTX_PRIVATE: Final = "private_time"
+ALL_ACTIVITY_CONTEXTS: Final = [
+    ACTX_PRIVATE, ACTX_GAMING, ACTX_ENTERTAINMENT, ACTX_MUSIC, ACTX_IDLE,
+]
+
+# Hold-Strength-Hinweis (nur Consumer-Attribut, entscheidet hier nichts):
+# hard = wahrscheinlich bewusste lokale Nutzung (private_time/gaming),
+# soft = ambient/vergessbar (entertainment/music), none = idle.
+HOLD_HARD: Final = "hard"
+HOLD_SOFT: Final = "soft"
+HOLD_NONE: Final = "none"
+
+# --------------------------------------------------------------------------- #
 # Presence-Gate. media_state klassifiziert NICHT mehr selbst home/away — die
 # Presence-Semantik hat genau EINEN Owner: core_state. media_state leitet den
 # Away-Gate strikt aus core_states `presence_personal`-Enum ab (`abwesend` →
@@ -393,6 +419,9 @@ DEFAULT_DATA: Final[dict[str, Any]] = {
     "presence_state": PRES_UNKNOWN,
     "presence_source": None,
     "away_gate": False,
+    # Activity-Context-Feed (FLEET-255) — additiv, eigener Sensor + Attr-Bündel.
+    "activity_context": ACTX_IDLE,
+    "activity_attrs": {},
 }
 
 # --------------------------------------------------------------------------- #
@@ -404,6 +433,8 @@ UID_SUBCONTEXT: Final[str] = "media_subcontext"
 UID_DEVICE: Final[str] = "media_device"
 UID_GAMING_SOURCE: Final[str] = "gaming_source"
 UID_GAMING_PLATFORM: Final[str] = "gaming_platform"
+# Activity-Context-Feed (FLEET-255): Media-Hälfte des Activity-States für core_state.
+UID_ACTIVITY_CONTEXT: Final[str] = "activity_context"
 # binary_sensors
 UID_HEADSET_ACTIVE: Final[str] = "headset_active"
 UID_ENTERTAINMENT_ACTIVE: Final[str] = "entertainment_active"

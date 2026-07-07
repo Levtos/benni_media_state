@@ -18,6 +18,7 @@ from .const import (
     DEFAULT_PROFILE,
     DOMAIN,
     PROFILE_LABELS,
+    UID_ACTIVITY_CONTEXT,
     UID_AWAY_GATE,
     UID_CONTEXT,
     UID_DEVICE,
@@ -42,7 +43,10 @@ class FieldDesc:
     uid: str            # unique_id-Suffix (auch object_id-Basis)
     name: str           # friendly name (Entity-Teil; has_entity_name=True)
     icon: str | None = None
-    attrs: tuple[str, ...] = field(default_factory=tuple)  # zusätzliche Attribut-Keys
+    attrs: tuple[str, ...] = field(default_factory=tuple)  # flache Attribut-Keys
+    # Optional: Attribute stammen komplett aus EINEM verschachtelten dict-Feld in
+    # coordinator.data (z.B. "activity_attrs"). Schließt `attrs` (flach) aus.
+    attrs_from: str | None = None
 
 
 SENSORS: tuple[FieldDesc, ...] = (
@@ -51,6 +55,13 @@ SENSORS: tuple[FieldDesc, ...] = (
     FieldDesc("device", UID_DEVICE, "Media Device", "mdi:devices"),
     FieldDesc("gaming_source", UID_GAMING_SOURCE, "Gaming Source", "mdi:gamepad-variant"),
     FieldDesc("gaming_platform", UID_GAMING_PLATFORM, "Gaming Platform", "mdi:controller-classic"),
+    # Activity-Context-Feed (FLEET-255): Media-Hälfte des Activity-States für
+    # core_state. Additiv — media_context bleibt unverändert. Attribute kommen
+    # gebündelt aus dem verschachtelten "activity_attrs"-Feld.
+    FieldDesc(
+        "activity_context", UID_ACTIVITY_CONTEXT, "Activity Context",
+        "mdi:playlist-music", attrs_from="activity_attrs",
+    ),
     # Quiet bleibt L1 (FLEET-31): Begründung als Freitext-Sensor.
     FieldDesc("quiet_mode_reason", UID_QUIET_MODE_REASON, "Quiet Mode Reason", "mdi:comment-question-outline"),
     # Presence-Gate (FLEET-212): sichtbarer Presence-State (zuhause/abwesend/
@@ -110,7 +121,11 @@ class MediaStateEntity(CoordinatorEntity[MediaStateCoordinator]):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        data = self.coordinator.data or {}
+        # Verschachteltes Attribut-Bündel (z.B. activity_attrs) hat Vorrang.
+        if self._desc.attrs_from:
+            bundle = data.get(self._desc.attrs_from)
+            return dict(bundle) if isinstance(bundle, dict) else None
         if not self._desc.attrs:
             return None
-        data = self.coordinator.data or {}
         return {attr: data.get(attr) for attr in self._desc.attrs}

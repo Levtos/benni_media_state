@@ -65,6 +65,7 @@ from .const import (
     CONF_TV_PLAYER,
     CONF_TV_POWER,
     CTX_GAMING,
+    CTX_STREAMING,
     DEFAULT_DEBOUNCE,
     DEFAULT_PROFILE,
     DEV_APPLETV,
@@ -545,6 +546,31 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["context_cards"] = self._context_echo()
         data["classifiers"] = self._classifiers()
         data["bindings"] = self.bindings()
+
+        # Activity-Context-Feed (FLEET-255): Media-Hälfte des Activity-States
+        # für core_state. Additiv aus dem SCHON berechneten state + inputs —
+        # ändert media_context/decide() nicht. Kein Rückgriff auf core_state
+        # activity_state oder presence_effective.
+        ac = logic.derive_activity_context(state, inputs)
+        activity_attrs = dict(ac.attrs)
+        # Optionale Consumer-Metadaten NUR aus bereits gelesenen Daten (keine
+        # neuen Roh-Bindungen); fehlend → weglassen statt erzwingen.
+        now_playing = data["now_playing"] or {}
+        if now_playing.get("title"):
+            activity_attrs["title"] = now_playing["title"]
+        if now_playing.get("artist"):
+            activity_attrs["artist"] = now_playing["artist"]
+        if state.context == CTX_GAMING:
+            if logic.title_present(inputs.ps5_raw):
+                activity_attrs["game_title"] = inputs.ps5_raw
+            elif inputs.ps5_title and str(inputs.ps5_title).strip():
+                activity_attrs["game_title"] = inputs.ps5_title
+            elif logic.title_present(inputs.pc_raw):
+                activity_attrs["game_title"] = inputs.pc_raw
+        if state.context == CTX_STREAMING and inputs.atv_app_id:
+            activity_attrs["source_app"] = inputs.atv_app_id
+        data["activity_context"] = ac.state
+        data["activity_attrs"] = activity_attrs
         return data
 
     async def _async_update_data(self) -> dict[str, Any]:
