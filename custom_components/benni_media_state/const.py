@@ -140,6 +140,19 @@ GP_PS5: Final = "ps5"
 GP_SWITCH: Final = "switch"
 GP_PC: Final = "pc"
 
+# PS5-Gaming OFF-Hold (FLEET-262): die Sony-PlayStation-media_player-Integration
+# fällt beim Zocken periodisch ~30–35 s auf `unavailable`; der gebundene
+# core_devices-Master `sensor.benni_master_ps5` folgt (nicht watt-primär) auf
+# `unknown` — obwohl die PS5-Steckdose durchgehend ~200 W meldet. `ps5_on`
+# bricht dann kurz ein und reißt Gaming-Szenario + Audio-/Licht-Kette ab. Solange
+# der Einbruch NUR aus einer degradierten Quelle (unknown/unavailable) stammt,
+# hält der Coordinator `ps5_on` so lange (symmetrisch zu AWAY_DEBOUNCE_SECONDS,
+# nur als OFF- statt ON-Debounce). Ein SAUBERES Aus (Quelle meldet definit off)
+# räumt sofort. 90 s > beobachtete ~35-s-Dropouts mit Reserve; ein echtes Aus
+# während eines Dropouts verzögert das Gaming-Ende um max. dieses Fenster.
+# Die eigentliche Wurzel (Master watt-primär) ist FLEET-263 (core_devices/Codex).
+PS5_DROPOUT_HOLD_SECONDS: Final = 90.0
+
 # --------------------------------------------------------------------------- #
 # B2-Gate FINAL (FLEET-30, Lastenheft v3.1 + ETM-Live-Verify 2026-06-10).
 # Zwei getrennte Ebenen:
