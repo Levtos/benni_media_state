@@ -75,6 +75,7 @@ from .const import (
     PRIVATE_MANUAL_TIMEOUT_SECONDS,
     PROFILE_PREFILL,
     PROFILES,
+    PS5_DROPOUT_HOLD_SECONDS,
     WATCH_KEYS,
 )
 
@@ -132,6 +133,10 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._manual_nudge: str | None = None
         # Away-Gate ON-Debounce: monotone Startzeit des aktuellen Away-Fensters.
         self._away_since: float | None = None
+        # PS5-Gaming OFF-Hold (FLEET-262): Monotone des letzten echten ps5_on —
+        # überbrückt PlayStation-media_player-Dropouts (~30 s), damit Gaming die
+        # Audio-/Licht-Kette nicht abreißt. Siehe logic.hold_ps5_on.
+        self._ps5_on_since: float | None = None
         # Nativer private_time-Manual-Latch (FLEET-44/98): Zustand + Auto-Clear.
         # Gesetzt/gelesen über die switch-Entität (switch.py); Auto-Clear bei
         # Einschlaf-Flanke (bio_state) und nach Timeout.
@@ -289,6 +294,20 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if st is None or st.state in ("unknown", "unavailable"):
             return None
         return st.state
+
+    def _raw_state(self, key: str) -> str | None:
+        """Roh-State inkl. unknown/unavailable (None nur wenn Entität fehlt/ungebunden).
+
+        Anders als `_state` behält dies die Unterscheidung ``off`` (sauberes Aus)
+        vs. ``unavailable``/``unknown`` (Quell-Dropout) — nötig für den PS5-Hold
+        (FLEET-262), damit ein echtes Ausschalten sofort räumt, ein Integrations-
+        Aussetzer aber überbrückt wird.
+        """
+        eid = self._entity_id(key)
+        if not eid:
+            return None
+        st = self.hass.states.get(eid)
+        return st.state if st is not None else None
 
     def _attr(self, key: str, attr: str) -> str | None:
         eid = self._entity_id(key)
@@ -454,8 +473,23 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # PS5: Plug-Active gewinnt, sonst Player-State.
         ps5_player_state = self._state(CONF_PS5_PLAYER)
-        ps5_on = _bool(self._state(CONF_PS5_ACTIVE)) or ps5_player_state in (
+        ps5_on_raw = _bool(self._state(CONF_PS5_ACTIVE)) or ps5_player_state in (
             "on", "playing", "paused",
+        )
+        # OFF-Hold (FLEET-262): bricht ps5_on ein, während die Aktiv-Quelle
+        # (Master) oder der Player degradiert ist (unknown/unavailable = flaky
+        # PlayStation-Integration), wird Gaming bis PS5_DROPOUT_HOLD_SECONDS
+        # gehalten. Ein sauberes `off` beider Quellen räumt sofort (kein Hold).
+        ps5_source_degraded = (
+            self._raw_state(CONF_PS5_ACTIVE) in ("unknown", "unavailable")
+            or self._raw_state(CONF_PS5_PLAYER) in ("unknown", "unavailable")
+        )
+        ps5_on, self._ps5_on_since = logic.hold_ps5_on(
+            ps5_on_raw,
+            ps5_source_degraded,
+            self._ps5_on_since,
+            time.monotonic(),
+            PS5_DROPOUT_HOLD_SECONDS,
         )
         ps5_title = self._attr(CONF_PS5_PLAYER, "media_title") or self._state(CONF_PS5_TITLE)
 

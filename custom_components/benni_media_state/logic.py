@@ -352,6 +352,42 @@ def detect_gaming(
     return None
 
 
+def hold_ps5_on(
+    raw_on: bool,
+    source_degraded: bool,
+    hold_since: Optional[float],
+    now: float,
+    hold_s: float,
+) -> tuple[bool, Optional[float]]:
+    """OFF-Hold für `ps5_on` über Quell-Dropouts. Pure + testbar (FLEET-262).
+
+    Symmetrisch zu ``gate_away``, aber als OFF- statt ON-Debounce: die Sony-
+    PlayStation-``media_player``-Integration fällt beim Zocken periodisch ~30 s
+    auf ``unavailable``; der gebundene core_devices-Master folgt (nicht watt-
+    primär) auf ``unknown`` → ``raw_on`` bricht kurz ein und reißt das Gaming-
+    Szenario samt Audio-/Licht-Kette ab.
+
+    Solange der Einbruch NUR aus einer degradierten Quelle stammt
+    (``source_degraded`` = Master/Player auf unknown/unavailable), wird ``on``
+    bis ``hold_s`` seit dem letzten echten On gehalten. Ein SAUBERES Aus (Quelle
+    meldet definit off → ``source_degraded`` False) räumt SOFORT — echtes
+    Ausschalten beendet Gaming ohne Verzögerung. Wurde nie ein echtes On gesehen
+    (``hold_since is None``), wird nichts erfunden.
+
+    Return: ``(held_on, new_hold_since)`` — ``hold_since`` = Monotone des letzten
+    echten On; Coordinator hält sie als Instanz-State.
+    """
+    if raw_on:
+        return True, now
+    if not source_degraded:
+        return False, None
+    if hold_since is None:
+        return False, None
+    if (now - hold_since) < hold_s:
+        return True, hold_since
+    return False, None
+
+
 # --------------------------------------------------------------------------- #
 # Streaming via Apple TV
 # --------------------------------------------------------------------------- #
