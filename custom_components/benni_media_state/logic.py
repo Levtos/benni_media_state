@@ -141,6 +141,12 @@ class MediaState:
     presence_state: str = PRES_UNKNOWN
     presence_source: Optional[str] = None
     away_gate: bool = False
+    # Private-Time-Diagnose (control#3): aktiv/inaktiv, Quelle (auto/manual),
+    # Eintrittsgrund und ggf. Grund eines geblockten Eintritts (z.B. Denon aus).
+    private_time_active: bool = False
+    private_source: Optional[str] = None
+    private_reason: Optional[str] = None
+    private_blocked_reason: Optional[str] = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -157,6 +163,10 @@ class MediaState:
             "presence_state": self.presence_state,
             "presence_source": self.presence_source,
             "away_gate": self.away_gate,
+            "private_time_active": self.private_time_active,
+            "private_source": self.private_source,
+            "private_reason": self.private_reason,
+            "private_blocked_reason": self.private_blocked_reason,
         }
 
 
@@ -244,6 +254,17 @@ def should_clear_private_on_sleep(
     return b in BIO_SLEEP_VALUES and lb not in BIO_SLEEP_VALUES
 
 
+def should_clear_private_on_pc_off(
+    pc_active: bool, last_pc_active: Optional[bool], private_manual: bool
+) -> bool:
+    """control#3: Der manuelle private_time-Pfad braucht PC (`manual = switch ∧
+    PC`). Fällt der PC weg, endet Private — und der Schalter darf NICHT aktiv
+    stehenbleiben, sonst greift er beim nächsten PC-Start sofort wieder. Daher
+    den Latch auf der echten PC-Aus-FLANKE räumen (nicht im Dauer-Aus-Zustand,
+    sonst könnte man ihn bei ausgeschaltetem PC nie mehr setzen)."""
+    return private_manual and last_pc_active is True and pc_active is False
+
+
 # --------------------------------------------------------------------------- #
 # Quiet (Detection bleibt L1 — schaltet KEIN Szenario, FLEET-31)
 # --------------------------------------------------------------------------- #
@@ -265,17 +286,60 @@ def evaluate_quiet(inp: Inputs) -> tuple[bool, Optional[str]]:
 
 
 # --------------------------------------------------------------------------- #
-# private_time (FLEET-31: zustandsbasiert ODER manuell — ODER-verknüpft)
+# private_time (control#3): ZWEI getrennte Eintrittswege, live/stateless.
+#   automatic = classifier_private AND pc_active AND denon_active
+#   manual    = private_manual_switch AND pc_active
+#   private_time = automatic OR manual
+# Der automatische Pfad braucht zwingend Classifier, PC UND Denon — ein
+# versehentlich gestartetes Stash-Video bei ausgeschaltetem Denon aktiviert
+# also KEINE Private Time (Fehler A). Der manuelle Pfad (Headset-Override)
+# braucht KEINEN Denon und KEINEN Classifier und schaltet den Denon NIE
+# automatisch ein. Keine Hysterese/kein Hold auf PC/Denon: Exit = sofort,
+# sobald eine Pflichtbedingung des jeweiligen Pfads entfällt (kein Latch —
+# Fehler B). HomePods bleiben in beiden Pfaden aus (downstream: media_policy).
 # --------------------------------------------------------------------------- #
-def detect_private(inp: Inputs) -> Optional[str]:
-    """Trigger-Grund für private_time oder None."""
+@dataclass(frozen=True)
+class PrivateEval:
+    """Ergebnis der Private-Time-Auswertung inkl. Diagnose."""
+
+    active: bool
+    source: Optional[str]          # "auto" | "manual" | None
+    reason: Optional[str]          # Eintrittsgrund (für active_reasons/Cockpit)
+    blocked_reason: Optional[str]  # warum ein möglicher Eintritt NICHT griff
+
+
+def classifier_private(inp: Inputs) -> bool:
+    """Stash-Title-Classifier signalisiert Private-Content (Streams ODER Enum)."""
     if inp.stash_streams is not None and inp.stash_streams > 0:
-        return "stash_streams"
+        return True
     if inp.stash_enum is not None and inp.stash_enum >= 1:
-        return "stash_classifier"
-    if inp.private_manual:
-        return "manual_switch"
-    return None
+        return True
+    return False
+
+
+def evaluate_private(inp: Inputs) -> PrivateEval:
+    """Zwei-Pfad-Private-Time (siehe Modul-Kommentar). Auto vor Manuell."""
+    cls = classifier_private(inp)
+    automatic = cls and inp.pc_active and inp.denon_active
+    manual = inp.private_manual and inp.pc_active
+    if automatic:
+        return PrivateEval(True, "auto", "auto:classifier+pc+denon", None)
+    if manual:
+        return PrivateEval(True, "manual", "manual:switch+pc", None)
+    # Kein Eintritt — Diagnose, warum ein plausibler Auslöser geblockt wurde.
+    blocked: Optional[str] = None
+    if cls and not inp.denon_active:
+        blocked = "auto_blocked:denon_off"
+    elif cls and not inp.pc_active:
+        blocked = "auto_blocked:pc_off"
+    elif inp.private_manual and not inp.pc_active:
+        blocked = "manual_blocked:pc_off"
+    return PrivateEval(False, None, None, blocked)
+
+
+def detect_private(inp: Inputs) -> Optional[str]:
+    """Kompat-Shim: Eintrittsgrund oder None."""
+    return evaluate_private(inp).reason
 
 
 # --------------------------------------------------------------------------- #
@@ -465,12 +529,16 @@ def decide(
         return d
 
     # private_time hat höchste Szenario-Priorität (Lastenheft:
-    # private_time > gaming > streaming/tv > idle).
-    private_reason = detect_private(inp)
-    if private_reason is not None:
+    # private_time > gaming > streaming/tv > idle). Zwei-Pfad-Modell (control#3).
+    pe = evaluate_private(inp)
+    d.private_time_active = pe.active
+    d.private_source = pe.source
+    d.private_reason = pe.reason
+    d.private_blocked_reason = pe.blocked_reason
+    if pe.active:
         d.context = CTX_PRIVATE
         d.subcontext = SUB_NONE
-        reasons.append(f"private:{private_reason}")
+        reasons.append(f"private:{pe.reason}")
     elif inp.manual_nudge:
         d.subcontext = inp.manual_nudge
         if inp.manual_nudge.startswith("tv_"):

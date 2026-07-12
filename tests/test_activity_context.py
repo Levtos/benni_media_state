@@ -107,33 +107,38 @@ def test_streaming_feed_entertainment():
 
 
 def test_private_stash_streams_feed_private():
-    state, ac = _feed(stash_streams=2)
+    # control#3: auto-Private braucht Classifier ∧ PC ∧ Denon.
+    state, ac = _feed(stash_streams=2, pc_active=True, denon_active=True)
     assert state.context == C.CTX_PRIVATE
     assert ac.state == C.ACTX_PRIVATE
     assert ac.hold_strength == C.HOLD_HARD
     assert ac.attrs["private_time_active"] is True
-    assert ac.reason == "private:stash_streams"
+    assert ac.reason == "private:auto:classifier+pc+denon"
 
 
 def test_private_stash_enum_feed_private():
-    state, ac = _feed(stash_enum=1)
+    state, ac = _feed(stash_enum=1, pc_active=True, denon_active=True)
     assert state.context == C.CTX_PRIVATE
     assert ac.state == C.ACTX_PRIVATE
-    assert ac.reason == "private:stash_classifier"
+    assert ac.reason == "private:auto:classifier+pc+denon"
 
 
 def test_private_manual_switch_feed_private():
-    state, ac = _feed(private_manual=True)
+    # Headset-Override: manueller Schalter ∧ PC (kein Denon nötig).
+    state, ac = _feed(private_manual=True, pc_active=True)
     assert state.context == C.CTX_PRIVATE
     assert ac.state == C.ACTX_PRIVATE
-    assert ac.reason == "private:manual_switch"
+    assert ac.reason == "private:manual:switch+pc"
 
 
 # --------------------------------------------------------------- Feed-Priorität
 
 
 def test_priority_private_over_gaming():
-    _, ac = _feed(stash_streams=1, ps5_on=True, ps5_raw="Doom")
+    _, ac = _feed(
+        stash_streams=1, pc_active=True, denon_active=True,
+        ps5_on=True, ps5_raw="Doom",
+    )
     assert ac.state == C.ACTX_PRIVATE
 
 

@@ -143,6 +143,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._private_manual: bool = False
         self._private_timeout_unsub: CALLBACK_TYPE | None = None
         self._last_bio_state: str | None = None
+        # control#3: PC-Aus-Flanke räumt den manuellen private_time-Latch.
+        self._last_pc_active: bool | None = None
 
     # ----- profile / binding -----
     @property
@@ -553,6 +555,18 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._private_manual = False
             self._cancel_private_timeout()
         self._last_bio_state = bio
+
+        # control#3: manuellen private_time-Latch auf der PC-Aus-Flanke räumen
+        # (manual = switch ∧ PC). Vor dem Input-Bau, damit derselbe Tick schon
+        # ohne private_time rechnet.
+        pc_active_now = _bool(self._state(CONF_PC_ACTIVE))
+        if logic.should_clear_private_on_pc_off(
+            pc_active_now, self._last_pc_active, self._private_manual
+        ):
+            _LOGGER.info("media_state: private_time-Latch PC-Off-Clear")
+            self._private_manual = False
+            self._cancel_private_timeout()
+        self._last_pc_active = pc_active_now
 
         inputs = self._build_inputs()
         state = logic.decide(

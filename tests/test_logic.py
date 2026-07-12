@@ -209,27 +209,79 @@ def test_quiet_external_true_wins():
     assert d.quiet_mode_reason == "quiet_mode_external"
 
 
-# ------------------------------------------------- private_time (FLEET-31)
+# ---------------------------- private_time Zwei-Pfad-Modell (control#3) ------
 
 
-def test_private_via_stash_streams():
-    d = L.decide(_inp(stash_streams=2))
+def test_private_auto_requires_classifier_pc_denon():
+    # Classifier ∧ PC ∧ Denon → automatischer Eintritt.
+    d = L.decide(_inp(stash_enum=1, pc_active=True, denon_active=True))
     assert d.context == C.CTX_PRIVATE
-    assert "private:stash_streams" in d.active_reasons
+    assert d.private_time_active is True
+    assert d.private_source == "auto"
+    assert "private:auto:classifier+pc+denon" in d.active_reasons
     assert d.entertainment_active is False
 
 
-def test_private_via_stash_classifier_enum():
-    # FLEET-43: Stash-Enum >= 1 ⇔ Titel vorhanden ⇒ aktiv.
-    d = L.decide(_inp(stash_enum=1))
+def test_private_auto_via_stash_streams():
+    d = L.decide(_inp(stash_streams=2, pc_active=True, denon_active=True))
     assert d.context == C.CTX_PRIVATE
-    assert "private:stash_classifier" in d.active_reasons
+    assert d.private_source == "auto"
 
 
-def test_private_via_manual_switch():
-    d = L.decide(_inp(private_manual=True))
+def test_private_no_entry_when_denon_off():
+    # Fehler A: Stash-Video bei ausgeschaltetem Denon → KEIN Private Time.
+    d = L.decide(_inp(stash_enum=1, pc_active=True, denon_active=False))
+    assert d.context != C.CTX_PRIVATE
+    assert d.private_time_active is False
+    assert d.private_blocked_reason == "auto_blocked:denon_off"
+
+
+def test_private_no_entry_when_pc_off():
+    d = L.decide(_inp(stash_enum=1, pc_active=False, denon_active=True))
+    assert d.private_time_active is False
+    assert d.private_blocked_reason == "auto_blocked:pc_off"
+
+
+def test_private_manual_needs_pc_not_denon():
+    # Headset-Override: manueller Schalter ∧ PC, OHNE Denon, OHNE Classifier.
+    d = L.decide(_inp(private_manual=True, pc_active=True, denon_active=False))
     assert d.context == C.CTX_PRIVATE
-    assert "private:manual_switch" in d.active_reasons
+    assert d.private_time_active is True
+    assert d.private_source == "manual"
+    assert "private:manual:switch+pc" in d.active_reasons
+
+
+def test_private_manual_blocked_without_pc():
+    d = L.decide(_inp(private_manual=True, pc_active=False))
+    assert d.private_time_active is False
+    assert d.private_blocked_reason == "manual_blocked:pc_off"
+
+
+def test_private_exit_is_live_not_latched():
+    # Exit sofort, sobald eine Pflichtbedingung entfällt (kein Latch).
+    active = L.evaluate_private(_inp(stash_enum=1, pc_active=True, denon_active=True))
+    assert active.active is True
+    gone = L.evaluate_private(_inp(stash_enum=0, pc_active=True, denon_active=True))
+    assert gone.active is False
+
+
+# --- manueller Latch: PC-Off-Clear (control#3) ----------------------------
+def test_private_manual_cleared_on_pc_off_edge():
+    assert L.should_clear_private_on_pc_off(False, True, True) is True
+
+
+def test_private_manual_pc_off_no_clear_without_latch():
+    assert L.should_clear_private_on_pc_off(False, True, False) is False
+
+
+def test_private_manual_pc_off_no_clear_without_edge():
+    # Dauer-Aus (last already False) → nicht dauerhaft blocken.
+    assert L.should_clear_private_on_pc_off(False, False, True) is False
+    assert L.should_clear_private_on_pc_off(False, None, True) is False
+
+
+def test_private_manual_pc_on_no_clear():
+    assert L.should_clear_private_on_pc_off(True, True, True) is False
 
 
 # --- native private_time-Switch: Einschlaf-Auto-Clear (FLEET-98) ----------
@@ -254,8 +306,11 @@ def test_private_not_cleared_when_awake():
 
 def test_private_beats_gaming():
     # Priorität: private_time > gaming (Stash läuft auf dem PC — der PC-Titel
-    # darf das Szenario nicht kapern).
-    d = L.decide(_inp(stash_streams=1, pc_active=True, pc_raw="Overwatch 2", pc_enum=2))
+    # darf das Szenario nicht kapern). control#3: auto braucht PC ∧ Denon.
+    d = L.decide(_inp(
+        stash_streams=1, pc_active=True, denon_active=True,
+        pc_raw="Overwatch 2", pc_enum=2,
+    ))
     assert d.context == C.CTX_PRIVATE
     assert d.subcontext == C.SUB_NONE
 
