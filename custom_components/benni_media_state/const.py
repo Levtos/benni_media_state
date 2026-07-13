@@ -481,6 +481,12 @@ CONTEXT_ATTRS: Final[tuple[str, ...]] = (
     "presence_state",
     "presence_source",
     "away_gate",
+    # Private-Time-Diagnose (control#3) — am Haupt-Sensor sichtbar machen:
+    # aktiv/inaktiv, Quelle (auto/manual), Eintrittsgrund, blockierter Eintritt.
+    "private_time_active",
+    "private_source",
+    "private_reason",
+    "private_blocked_reason",
 )
 
 # --------------------------------------------------------------------------- #
