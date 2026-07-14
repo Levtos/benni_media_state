@@ -359,17 +359,14 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Apple-TV-Wahrheit (FLEET-212): core_devices-Master primär, Player-Fallback.
 
         Der Master (sensor.benni_master_appletv) fusioniert Aktiv-Erkennung +
-        app_id in EINEM Owner. Gelesen wird das Attribut `is_active` (bool) und
-        `player_state`/`app_id` (Master spiegelt den nativen Player). Ist der
-        Master aktiv, aber sein Player-State-Attribut noch stale, wird `playing`
-        erzwungen. Ohne Master (fremde Anlage) greift der native Player.
+        app_id in EINEM Owner. Für die Szenario-Priorität zählt ausschließlich
+        der echte `player_state`; `is_active` darf Idle nicht zu Playing erheben.
+        Ohne Master (fremde Anlage) greift der native Player.
         Returns (atv_state, atv_app_id) — atv_state ∈ playing/paused/idle/off/…
         """
         master_active = _opt_bool(self._attr(CONF_APPLETV_MASTER, "is_active"))
         if master_active is not None:
             state = self._attr(CONF_APPLETV_MASTER, "player_state")
-            if master_active and not logic.appletv_active(state):
-                state = "playing"
             app = (
                 self._attr(CONF_APPLETV_MASTER, "app_id")
                 or self._attr(CONF_APPLETV_MASTER, "app_name")
@@ -383,6 +380,23 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return state, app
 
     # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
+    def _artwork(self, player_key: str, classifier_key: str | None = None, *, music_assistant: bool = False) -> dict[str, Any]:
+        """Geordnete Artwork-Kandidaten; die UI fällt bei Ladefehlern weiter."""
+        attrs = ("media_image_url", "entity_picture") if music_assistant else ("entity_picture", "media_image_url")
+        candidates: list[dict[str, str]] = []
+        for attr in attrs:
+            value = self._attr(player_key, attr)
+            if isinstance(value, str) and value and not any(item["url"] == value for item in candidates):
+                candidates.append({"url": value, "source": "music_assistant" if music_assistant and attr == "media_image_url" else attr})
+        if classifier_key:
+            value = self._attr(classifier_key, "artwork")
+            if isinstance(value, str) and value and not any(item["url"] == value for item in candidates):
+                candidates.append({"url": value, "source": "title_classifier"})
+        return {
+            "artwork_url": candidates[0]["url"] if candidates else None,
+            "artwork_candidates": candidates,
+        }
+
     def _device_matrix(self) -> dict[str, Any]:
         """Was die Quellen gerade zeigen — für das Cockpit (UX-Layer rendert nur).
         Liest dieselben Player wie _build_inputs; ändert KEINE Entscheidung."""
@@ -402,7 +416,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         denon_pl = self._state(CONF_DENON_PLAYER)
         return {
             "tv": dev(self._tv_active()[0],
-                      tv_pl, "mdi:television", source=self._attr(CONF_TV_PLAYER, "source")),
+                      tv_pl, "mdi:television", source=self._attr(CONF_TV_PLAYER, "source"), **self._artwork(CONF_TV_PLAYER)),
             "apple_tv": dev(
                 logic.appletv_active(atv),
                 atv,
@@ -412,16 +426,18 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._attr(CONF_APPLETV_PLAYER, "current_title")
                     or self._attr(CONF_APPLETV_PLAYER, "media_title")
                 ),
+                **self._artwork(CONF_APPLETV_PLAYER),
             ),
             "ps5": dev(_bool(self._state(CONF_PS5_ACTIVE)) or ps5_pl in ("on", "playing", "paused"),
-                       ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title")),
+                       ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title"), **self._artwork(CONF_PS5_PLAYER, CONF_PS5_ENUM)),
             "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch",
                           ignored=True),
             "pc": dev(_bool(self._state(CONF_PC_ACTIVE)), self._state(CONF_PC_ACTIVE), "mdi:desktop-classic"),
             "homepods": dev(hp == "playing", hp, "mdi:speaker-multiple",
                             title=self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
                             artist=self._attr(CONF_HOMEPODS_PLAYER, "media_artist"),
-                            volume=self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level")),
+                            volume=self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level"),
+                            **self._artwork(CONF_HOMEPODS_PLAYER, CONF_MEDIA_ENUM, music_assistant=True)),
             "denon": dev(_bool(self._state(CONF_DENON_ACTIVE)) or denon_pl in ("on", "playing"),
                          denon_pl, "mdi:audio-video"),
         }
@@ -444,7 +460,15 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Title-Classifier-Enums + Labels (PS5/PC = Gaming, HomePods = Musik)."""
         def cl(key: str, table: dict[int, str]) -> dict[str, Any]:
             e = _opt_int(self._state(key))
-            return {"enum": e, "label": table.get(e) if e is not None else None}
+            return {
+                "enum": e,
+                "label": table.get(e) if e is not None else None,
+                "display_name": self._attr(key, "key"),
+                "original_title": self._state(CONF_PS5_TITLE) if key == CONF_PS5_ENUM else self._state(CONF_PC_TITLE) if key == CONF_PC_ENUM else self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
+                "platform": self._attr(key, "context"),
+                "artwork_url": self._attr(key, "artwork"),
+                "entry_id": self._attr(key, "current_entry_id"),
+            }
         return {
             "ps5": cl(CONF_PS5_ENUM, self._GAME_LABELS),
             "pc": cl(CONF_PC_ENUM, self._GAME_LABELS),
@@ -463,6 +487,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "title": title,
             "artist": self._attr(CONF_HOMEPODS_PLAYER, "media_artist"),
             "volume": self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level"),
+            **self._artwork(CONF_HOMEPODS_PLAYER, CONF_MEDIA_ENUM, music_assistant=True),
         }
 
     # ----- evaluation -----
