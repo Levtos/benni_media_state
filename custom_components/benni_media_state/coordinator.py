@@ -464,7 +464,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "enum": e,
                 "label": table.get(e) if e is not None else None,
                 "display_name": self._attr(key, "key"),
-                "original_title": self._state(CONF_PS5_TITLE) if key == CONF_PS5_ENUM else self._state(CONF_PC_TITLE) if key == CONF_PC_ENUM else self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
+                "original_title": self._state(CONF_PS5_TITLE) if key == CONF_PS5_ENUM else self._state(CONF_PC_RAW) if key == CONF_PC_ENUM else self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
                 "platform": self._attr(key, "context"),
                 "artwork_url": self._attr(key, "artwork"),
                 "entry_id": self._attr(key, "current_entry_id"),

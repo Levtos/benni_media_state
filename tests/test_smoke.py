@@ -1,6 +1,11 @@
 """Smoke-Test: HA-freie logic.py lädt + decide() liefert stabile Defaults."""
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
+import bms_const as C
+
 import bms_logic as logic
 
 
@@ -26,3 +31,11 @@ def test_decide_defaults_to_idle():
         "quiet_mode", "quiet_mode_reason",
     ):
         assert key in data
+
+def test_coordinator_uses_only_defined_config_constants():
+    """Regression: undefined CONF_PC_TITLE crashed every coordinator refresh."""
+    source = Path(__file__).parents[1] / "custom_components" / "benni_media_state" / "coordinator.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    used = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id.startswith("CONF_")}
+    missing = sorted(name for name in used if not hasattr(C, name))
+    assert missing == []
