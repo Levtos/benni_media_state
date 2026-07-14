@@ -353,9 +353,14 @@ def appletv_active(state: Optional[str]) -> bool:
     return state in APPLETV_ACTIVE_STATES
 
 
+def appletv_playing(state: Optional[str]) -> bool:
+    """Nur echte Wiedergabe darf einen aktiven Gaming-Grind verdrängen."""
+    return state == "playing"
+
+
 def detect_devices(inp: Inputs) -> list[str]:
     devs = []
-    if appletv_active(inp.atv_state):
+    if appletv_playing(inp.atv_state):
         devs.append(DEV_APPLETV)
     if inp.tv_active or inp.tv_power:
         devs.append(DEV_TV)
@@ -456,7 +461,7 @@ def hold_ps5_on(
 # Streaming via Apple TV
 # --------------------------------------------------------------------------- #
 def detect_streaming(inp: Inputs, app_map: dict[str, str]) -> Optional[str]:
-    if not appletv_active(inp.atv_state):
+    if not appletv_playing(inp.atv_state):
         return None
     app = inp.atv_app_id
     if app is None:
@@ -550,9 +555,20 @@ def decide(
         reasons.append(f"manual_nudge:{inp.manual_nudge}")
 
     if d.context == CTX_IDLE:
-        # Gaming gewinnt über passives TV/Streaming.
+        # Echte Apple-TV-Wiedergabe gewinnt eng begrenzt gegen Gaming Grind.
+        # Einschalten, Idle und Pause bleiben rein beobachtbar und verdrängen
+        # Gaming nicht. Private Time wurde oben bereits priorisiert.
         g = detect_gaming(inp, sticky_gaming_sub)
-        if g is not None:
+        stream_sub = detect_streaming(inp, app_map)
+        stream_beats_grind = (
+            stream_sub is not None and g is not None and g[0] == SUB_GAME_GRIND
+        )
+        if stream_beats_grind:
+            d.context = CTX_STREAMING
+            d.subcontext = stream_sub
+            d.device = DEV_APPLETV
+            reasons.append(f"streaming_over_grind:{inp.atv_app_id}")
+        elif g is not None:
             sub, gs, gp, headset = g
             d.context = CTX_GAMING
             d.subcontext = sub
@@ -561,13 +577,12 @@ def decide(
             d.headset_active = headset
             reasons.append(f"gaming:{gp}")
         else:
-            stream_sub = detect_streaming(inp, app_map)
             if stream_sub is not None:
                 d.context = CTX_STREAMING
                 d.subcontext = stream_sub
                 reasons.append(f"streaming:{inp.atv_app_id}")
             elif (
-                appletv_active(inp.atv_state)
+                appletv_playing(inp.atv_state)
                 and inp.atv_app_id in APPLETV_SYSTEM_APPS
             ):
                 # System-App → Rollback aufs Pre-ATV-Szenario.
