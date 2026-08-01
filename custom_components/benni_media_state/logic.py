@@ -186,6 +186,30 @@ def title_present(raw: Optional[str]) -> bool:
 # --------------------------------------------------------------------------- #
 # Presence-Gate — echo core_state, no own classification.
 # --------------------------------------------------------------------------- #
+def debounce_rearm(
+    window_active: bool,
+    window_age_s: float | None,
+    max_wait_s: float,
+) -> bool:
+    """Darf das Trailing-Debounce-Fenster (neu) angestossen werden? (benni_media#13)
+
+    Der Coordinator besitzt die reale Uhr und den Timer; hier wohnt nur die
+    HA-freie Entscheidung.
+
+    - Kein laufendes Fenster  → immer armen (Burst-Sammlung beginnt).
+    - Laufendes, junges Fenster → neu anstossen (Burst weiter buendeln).
+    - Laufendes Fenster aelter als ``max_wait_s`` → NICHT mehr verlaengern.
+
+    Der Deckel macht den Uebergang nach oben deterministisch: ein anhaltender
+    Aenderungsstrom kann den compute nicht mehr unbegrenzt verschieben.
+    """
+    if not window_active:
+        return True
+    if window_age_s is None:
+        return True
+    return window_age_s < max_wait_s
+
+
 def away_from_presence(presence: Optional[str]) -> Optional[bool]:
     """core_state presence_personal → Away-Boolean. KEINE eigene Detektion.
 
