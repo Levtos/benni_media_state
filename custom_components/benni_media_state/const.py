@@ -408,7 +408,25 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
 # Options.
 # --------------------------------------------------------------------------- #
 CONF_DEBOUNCE: Final = "debounce_seconds"
-DEFAULT_DEBOUNCE: Final = 4.0
+# benni_media#13 — Trailing-Debounce fuer Aenderungs-Bursts. Er ist KEIN
+# Korrektheits-Gate (die Detektion selbst ist zustandsbehaftet und idempotent),
+# sondern ein Churn-Schutz: er buendelt einen Burst zu EINEM compute, damit
+# media_policy/media_apply nicht pro Einzel-Event neu rechnen.
+#
+# Belegte Kosten (Recorder, 2026-07-31, TV-Start): sensor.benni_master_tv wurde
+# 22:23:39.860 aktiv, media_context wechselte erst 22:23:43.864 auf `tv` — genau
+# EIN volles Fenster (4.004 s) auf dem kritischen Pfad, ohne dass ein Burst
+# vorlag. Zigbee/Z2M liefert die Leistungs-Reports auf einem 10-s-Raster; die
+# Attribut-Updates EINES Geraets treffen innerhalb weniger Millisekunden ein.
+# 2.0 s buendeln einen realen Burst also weiterhin vollstaendig, kosten aber
+# 2 s weniger Uebergangslatenz.
+DEFAULT_DEBOUNCE: Final = 2.0
+# Anti-Starvation-Deckel: jedes Event stiess das Fenster bisher NEU an, ein
+# anhaltender Aenderungsstrom konnte den compute daher unbegrenzt verschieben.
+# Ab diesem Alter laeuft das Fenster aus, statt weiter verlaengert zu werden —
+# der Uebergang wird dadurch deterministisch nach oben begrenzt.
+CONF_DEBOUNCE_MAX_WAIT: Final = "debounce_max_wait_seconds"
+DEFAULT_DEBOUNCE_MAX_WAIT: Final = 6.0
 CONF_DIAGNOSTICS_VERBOSE: Final[str] = "diagnostics_verbose"
 DEFAULT_DIAGNOSTICS_VERBOSE: Final[bool] = False
 

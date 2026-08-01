@@ -39,6 +39,7 @@ from .const import (
     CONF_CALL,
     CONF_DAY_STATE,
     CONF_DEBOUNCE,
+    CONF_DEBOUNCE_MAX_WAIT,
     CONF_DENON_ACTIVE,
     CONF_DENON_PLAYER,
     CONF_DOOR,
@@ -67,6 +68,7 @@ from .const import (
     CTX_GAMING,
     CTX_STREAMING,
     DEFAULT_DEBOUNCE,
+    DEFAULT_DEBOUNCE_MAX_WAIT,
     DEFAULT_PROFILE,
     DEV_APPLETV,
     DOMAIN,
@@ -123,6 +125,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
         self._profile = profile if profile in PROFILES else DEFAULT_PROFILE
         self._cancel_debounce: CALLBACK_TYPE | None = None
+        # benni_media#13: Startzeit des laufenden Debounce-Fensters (monotone
+        # Uhr) fuer den Anti-Starvation-Deckel; ueberlebt das Re-Arm.
+        self._debounce_started: float | None = None
         # OQ-2: Pre-ATV-Snapshot über Neustarts persistieren (R7-Rollback überlebt
         # HA-Restart, statt nur RAM). Debounced-Save via Store.
         self._store: Store = Store(hass, _STORE_VERSION, f"{DOMAIN}_{entry.entry_id}_state")
@@ -161,6 +166,17 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return max(0.0, float(self._opts.get(CONF_DEBOUNCE, DEFAULT_DEBOUNCE)))
         except (TypeError, ValueError):
             return DEFAULT_DEBOUNCE
+
+    @property
+    def debounce_max_wait_seconds(self) -> float:
+        """benni_media#13: Obergrenze fuers Verlaengern des Debounce-Fensters."""
+        try:
+            return max(
+                0.0,
+                float(self._opts.get(CONF_DEBOUNCE_MAX_WAIT, DEFAULT_DEBOUNCE_MAX_WAIT)),
+            )
+        except (TypeError, ValueError):
+            return DEFAULT_DEBOUNCE_MAX_WAIT
 
     def _entity_id(self, key: str) -> Any:
         """Auto-Bind (core_state-Blaupause): options ▶ data ▶ PROFILE_PREFILL[profile]."""
@@ -223,20 +239,38 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._cancel_debounce is not None:
             self._cancel_debounce()
             self._cancel_debounce = None
+        self._debounce_started = None
 
     @callback
     def _on_state_change(self, _event: Event) -> None:
-        """Debounce: Änderungs-Burst sammeln, dann einmal rechnen."""
+        """Debounce: Änderungs-Burst sammeln, dann einmal rechnen.
+
+        benni_media#13: Das Fenster wird weiterhin bei jedem Event neu angestossen
+        (so buendelt es den Burst), ABER nur bis `debounce_max_wait_seconds`. Ein
+        anhaltender Aenderungsstrom kann den compute damit nicht mehr unbegrenzt
+        verschieben — der Uebergang ist nach oben begrenzt und deterministisch.
+        """
         delay = self.debounce_seconds
         if delay <= 0:
+            self._cancel_pending()
             self.async_set_updated_data(self._compute())
             return
+        now = time.monotonic()
+        age = None if self._debounce_started is None else now - self._debounce_started
+        if not logic.debounce_rearm(
+            self._cancel_debounce is not None, age, self.debounce_max_wait_seconds
+        ):
+            # Deckel erreicht: laufendes Fenster NICHT verlaengern.
+            return
+        started = self._debounce_started
         self._cancel_pending()
+        self._debounce_started = started if started is not None else now
         self._cancel_debounce = async_call_later(self.hass, delay, self._on_debounce)
 
     @callback
     def _on_debounce(self, _now) -> None:
         self._cancel_debounce = None
+        self._debounce_started = None
         self.async_set_updated_data(self._compute())
 
     # ----- service surface -----
