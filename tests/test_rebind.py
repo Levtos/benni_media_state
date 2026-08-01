@@ -10,7 +10,9 @@ def test_benni_active_sources_default_to_masters():
     assert C.CONF_TV_ACTIVE not in prefill
     assert prefill[C.CONF_TV_MASTER] == "sensor.benni_master_tv"
     # FLEET-212: Apple TV sauber getrennt — nativer Player + Master-Sensor.
-    assert prefill[C.CONF_APPLETV_PLAYER] == "media_player.living_appletv"
+    # benni_media#16: nativer Player-Slot auf die nach dem Rename gültige LAN-
+    # Entität umgestellt (die alte `media_player.living_appletv` ist live 404).
+    assert prefill[C.CONF_APPLETV_PLAYER] == "media_player.living_appletv_lan"
     assert prefill[C.CONF_APPLETV_MASTER] == "sensor.benni_master_appletv"
     assert prefill[C.CONF_PS5_ACTIVE] == "sensor.benni_master_ps5"
     assert prefill[C.CONF_SWITCH_ACTIVE] == "sensor.benni_master_switch"
@@ -37,3 +39,14 @@ def test_legacy_active_sources_have_master_repoints():
         if isinstance(value, str)
     }
     assert not (set(C.LEGACY_ENTITY_REPOINTS) & prefill_values)
+
+
+def test_deprecated_appletv_entity_is_not_prefilled():
+    """benni_media#16: die nach dem Rename entfernte ID darf nicht als Default
+    gebunden werden (live 404). Gültig sind nur *_lan (nativ) und *_ma (MA)."""
+    prefill_values = {
+        value
+        for value in C.PROFILE_PREFILL[C.PROFILE_BENNI].values()
+        if isinstance(value, str)
+    }
+    assert "media_player.living_appletv" not in prefill_values

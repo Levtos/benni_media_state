@@ -368,8 +368,17 @@ PROFILE_PREFILL: Final[dict[str, dict[str, Any]]] = {
         CONF_TV_PLAYER: "media_player.living_lgtv",
         CONF_TV_POWER: "sensor.living_tv_plug_power",
         CONF_TV_MASTER: "sensor.benni_master_tv",
-        # Apple TV: nativer Player (Fallback) + core_devices-Master (Wahrheit).
-        CONF_APPLETV_PLAYER: "media_player.living_appletv",
+        # Apple TV: nativer LAN-Player (Geräte-Wahrheit für Kontext/Verfügbarkeit)
+        # + core_devices-Master (Aktiv-Fusion). benni_media#16: die frühere ID
+        # `media_player.living_appletv` existiert nach dem Rename nicht mehr (live
+        # 404) — Prefill auf die native LAN-Entität `media_player.living_appletv_lan`
+        # (Plattform apple_tv) umgestellt. Die MA-geroutete Wiedergabe läuft über
+        # `media_player.living_appletv_ma` und ist NICHT die Kontext-/Geräte-Quelle
+        # hier; der Master `sensor.benni_master_appletv` ist core_devices-owned
+        # (außerhalb dieses Scopes). Hinweis: Prefill wirkt nur für Neu-Bindungen;
+        # eine bestehende Live-Bindung auf die alte ID muss Benni per Options-
+        # Re-Save nachziehen (Live-Gate).
+        CONF_APPLETV_PLAYER: "media_player.living_appletv_lan",
         CONF_APPLETV_MASTER: "sensor.benni_master_appletv",
         CONF_PS5_PLAYER: "media_player.living_ps5",
         CONF_PS5_ACTIVE: "sensor.benni_master_ps5",
