@@ -78,6 +78,7 @@ from .const import (
     PROFILE_PREFILL,
     PROFILES,
     PS5_DROPOUT_HOLD_SECONDS,
+    TV_START_STABILIZATION_SECONDS,
     WATCH_KEYS,
 )
 
@@ -142,6 +143,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # überbrückt PlayStation-media_player-Dropouts (~30 s), damit Gaming die
         # Audio-/Licht-Kette nicht abreißt. Siehe logic.hold_ps5_on.
         self._ps5_on_since: float | None = None
+        # TV-Start-Stabilisierung: ein TV-Signal wird erst nach 20 s als TV-
+        # Kontext zugelassen; ein sauberes Off verwirft das Fenster.
+        self._tv_start_since: float | None = None
         # Nativer private_time-Manual-Latch (FLEET-44/98): Zustand + Auto-Clear.
         # Gesetzt/gelesen über die switch-Entität (switch.py); Auto-Clear bei
         # Einschlaf-Flanke (bio_state) und nach Timeout.
@@ -371,9 +375,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         (~35–39 W) bis 0 W als „an" hielt und den Szenario-Wechsel ~7 Min
         verschleppte. Die EINE Watt-Schwelle lebt im Master (FLEET-126).
 
-        Fallback (Master nicht gebunden/verfügbar, z. B. fremde Anlage) = alte
-        State-/Player-/Rohwatt-Heuristik. Returns (tv_active, tv_power);
-        tv_power ist nur im Fallback gesetzt, sonst None (Master entscheidet).
+        Fallback (Master nicht gebunden/verfügbar, z. B. fremde Anlage) = Player
+        plus TV-Watt-Fallback ab 50 W. Returns (tv_active, tv_power); tv_power
+        ist nur im Fallback gesetzt, sonst None (Master entscheidet).
         """
         master = _opt_bool(self._attr(CONF_TV_MASTER, "is_active"))
         if master is not None:
@@ -384,20 +388,29 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         tv_power_w = self._state(CONF_TV_POWER)
         try:
-            tv_power = float(tv_power_w) > 0 if tv_power_w is not None else None
+            tv_power = logic.tv_watt_active(float(tv_power_w)) if tv_power_w is not None else None
         except (TypeError, ValueError):
             tv_power = None
         return active, tv_power
 
     def _atv(self) -> tuple[str | None, str | None]:
-        """Apple-TV-Wahrheit (FLEET-212): core_devices-Master primär, Player-Fallback.
+        """Apple-TV-Wahrheit: native LAN-Quelle ist autoritativ.
 
-        Der Master (sensor.benni_master_appletv) fusioniert Aktiv-Erkennung +
-        app_id in EINEM Owner. Für die Szenario-Priorität zählt ausschließlich
-        der echte `player_state`; `is_active` darf Idle nicht zu Playing erheben.
-        Ohne Master (fremde Anlage) greift der native Player.
+        Der Core-Devices-Master sowie die MA-Entität sind keine Power-/Playback-
+        Fallbacks. Ist der native LAN-Player gebunden, werden auch unknown /
+        unavailable nicht durch einen veralteten Master ersetzt. Ein Master-
+        Fallback bleibt nur für Profile ohne native Player-Binding.
         Returns (atv_state, atv_app_id) — atv_state ∈ playing/paused/idle/off/…
         """
+        native_eid = self._entity_id(CONF_APPLETV_PLAYER)
+        if native_eid:
+            state = self._state(CONF_APPLETV_PLAYER)
+            app = (
+                self._attr(CONF_APPLETV_PLAYER, "app_id")
+                or self._attr(CONF_APPLETV_PLAYER, "app_name")
+            )
+            return logic.select_appletv_source(True, state, app, None, None, None)
+
         master_active = _opt_bool(self._attr(CONF_APPLETV_MASTER, "is_active"))
         if master_active is not None:
             state = self._attr(CONF_APPLETV_MASTER, "player_state")
@@ -405,13 +418,15 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._attr(CONF_APPLETV_MASTER, "app_id")
                 or self._attr(CONF_APPLETV_MASTER, "app_name")
             )
-            return state, (app or None)
+            return logic.select_appletv_source(
+                False, None, None, master_active, state, app or None
+            )
         state = self._state(CONF_APPLETV_PLAYER)
         app = (
             self._attr(CONF_APPLETV_PLAYER, "app_id")
             or self._attr(CONF_APPLETV_PLAYER, "app_name")
         )
-        return state, app
+        return logic.select_appletv_source(False, state, app, None, None, None)
 
     # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
     def _artwork(self, player_key: str, classifier_key: str | None = None, *, music_assistant: bool = False) -> dict[str, Any]:
@@ -528,8 +543,20 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _build_inputs(self) -> logic.Inputs:
         # TV (FLEET-112): Aktiv-Wahrheit aus dem core_devices-Master; Quelle für
         # den Subcontext weiterhin aus dem Player-`source`-Attribut.
-        tv_active, tv_power = self._tv_active()
-        # Apple TV (FLEET-212): Master primär, nativer Player als Fallback.
+        tv_active_raw, tv_power = self._tv_active()
+        # TV-Start: Master/Player/Watt liefern nur ein Roh-Signal; der TV-
+        # Kontext wird erst nach dem stabilen 20-s-Fenster freigegeben.
+        tv_signal = tv_active_raw or tv_power is True
+        tv_active, self._tv_start_since = logic.stabilize_tv_start(
+            tv_signal,
+            self._tv_start_since,
+            time.monotonic(),
+            TV_START_STABILIZATION_SECONDS,
+        )
+        if tv_power is not None:
+            tv_power = tv_active
+
+        # Apple TV (FLEET-212): native LAN player is authoritative.
         atv_state, atv_app_id = self._atv()
 
         # PS5: Plug-Active gewinnt, sonst Player-State.

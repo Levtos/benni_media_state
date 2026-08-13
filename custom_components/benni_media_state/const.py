@@ -430,6 +430,10 @@ CONF_DEBOUNCE: Final = "debounce_seconds"
 # 2.0 s buendeln einen realen Burst also weiterhin vollstaendig, kosten aber
 # 2 s weniger Uebergangslatenz.
 DEFAULT_DEBOUNCE: Final = 2.0
+# TV-only fallback and startup arbitration. Watt is never a primary source
+# while the Core Devices TV master is available.
+TV_WATT_THRESHOLD_ON: Final[float] = 50.0
+TV_START_STABILIZATION_SECONDS: Final[float] = 20.0
 # Anti-Starvation-Deckel: jedes Event stiess das Fenster bisher NEU an, ein
 # anhaltender Aenderungsstrom konnte den compute daher unbegrenzt verschieben.
 # Ab diesem Alter laeuft das Fenster aus, statt weiter verlaengert zu werden —

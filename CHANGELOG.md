@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.2 — Stable TV/Apple-TV/PS5 Source Arbitration
+
+- Native Apple-TV-LAN-Quelle ist autoritativ für Power, Verfügbarkeit und
+  Playback; MA bleibt Routing-/Metadatenquelle.
+- TV-Watt-Fallback nutzt 50 W und TV-Starts erhalten ein 20-s-
+  Stabilitätsfenster.
+- Apple TV und PS5 bleiben vor TV-WebOS/Watt; bestehende G10-Regeln für
+  `playing` versus `idle`/`paused` bleiben unverändert.
+- Referenzen: `benni_media_state#21`, `benni-core-devices#41`.
+
 ## 0.12.0 — Media Activity Context Feed (Producer-first für core_state)
 
 - **`sensor.benni_media_state_activity_context`** neu: additiver Media-Activity-Feed,
