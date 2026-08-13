@@ -31,14 +31,12 @@ from .const import (
     ACTX_MUSIC,
     ACTX_PRIVATE,
     APPLETV_SYSTEM_APPS,
+    BIO_SLEEP_VALUES,
     CTX_GAMING,
     CTX_IDLE,
     CTX_PRIVATE,
     CTX_STREAMING,
     CTX_TV,
-    HOLD_HARD,
-    HOLD_NONE,
-    HOLD_SOFT,
     DEFAULT_APPLETV_APP_MAP,
     DEV_APPLETV,
     DEV_DENON,
@@ -58,7 +56,9 @@ from .const import (
     GS_NONE,
     GS_PC,
     GS_TV,
-    BIO_SLEEP_VALUES,
+    HOLD_HARD,
+    HOLD_NONE,
+    HOLD_SOFT,
     NO_TITLE_VALUES,
     PRES_AWAY,
     PRES_HOME,
@@ -70,6 +70,8 @@ from .const import (
     SUB_STR_DEFAULT,
     SUB_TV_DEFAULT,
     TV_SOURCE_MAP,
+    TV_START_STABILIZATION_SECONDS,
+    TV_WATT_THRESHOLD_ON,
 )
 
 
@@ -368,7 +370,8 @@ def detect_private(inp: Inputs) -> Optional[str]:
 
 # --------------------------------------------------------------------------- #
 # Geräte-Priorität (höchstes gewinnt für das primäre "device")
-# Reihenfolge: ATV > TV > PS5 > Switch > PC > Denon > HomePods
+# Reihenfolge: ATV > PS5 > TV > Switch > PC > Denon > HomePods.
+# Apple TV/PS5 bleiben damit vor WebOS/Watt-TV.
 # --------------------------------------------------------------------------- #
 APPLETV_ACTIVE_STATES = ("playing", "paused", "idle")
 
@@ -382,14 +385,53 @@ def appletv_playing(state: Optional[str]) -> bool:
     return state == "playing"
 
 
+def select_appletv_source(
+    native_bound: bool,
+    native_state: Optional[str],
+    native_app_id: Optional[str],
+    master_active: Optional[bool],
+    master_state: Optional[str],
+    master_app_id: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """Select Apple-TV truth without allowing a secondary source to mask LAN."""
+    if native_bound:
+        return native_state, native_app_id
+    if master_active is not None:
+        return master_state, master_app_id
+    return native_state, native_app_id
+
+
+def tv_watt_active(watt: Optional[float]) -> bool:
+    """TV-Watt-Fallback: nur 50 W oder mehr zählt als aktiv."""
+    return watt is not None and watt >= TV_WATT_THRESHOLD_ON
+
+
+def stabilize_tv_start(
+    raw_active: bool,
+    started_at: Optional[float],
+    now: float,
+    window_seconds: float = TV_START_STABILIZATION_SECONDS,
+) -> tuple[bool, Optional[float]]:
+    """Hold TV activation until the bounded startup window is complete.
+
+    A clean off resets the window. Higher-priority Apple-TV/PS5 inputs are not
+    gated here and therefore can win immediately while the TV is stabilizing.
+    """
+    if not raw_active:
+        return False, None
+    if started_at is None:
+        return False, now
+    return now - started_at >= window_seconds, started_at
+
+
 def detect_devices(inp: Inputs) -> list[str]:
     devs = []
-    if appletv_playing(inp.atv_state):
+    if appletv_active(inp.atv_state):
         devs.append(DEV_APPLETV)
-    if inp.tv_active or inp.tv_power:
-        devs.append(DEV_TV)
     if inp.ps5_on:
         devs.append(DEV_PS5)
+    if inp.tv_active or inp.tv_power:
+        devs.append(DEV_TV)
     if inp.switch_dock:
         devs.append(DEV_SWITCH)
     if inp.pc_active:
@@ -485,7 +527,10 @@ def hold_ps5_on(
 # Streaming via Apple TV
 # --------------------------------------------------------------------------- #
 def detect_streaming(inp: Inputs, app_map: dict[str, str]) -> Optional[str]:
-    if not appletv_playing(inp.atv_state):
+    # Context truth is broader than playback truth: native idle/paused with a
+    # valid Apple-TV session is still streaming context. G10 below keeps only
+    # actual playing eligible to displace gaming_grind.
+    if not appletv_active(inp.atv_state):
         return None
     app = inp.atv_app_id
     if app is None:
@@ -579,13 +624,16 @@ def decide(
         reasons.append(f"manual_nudge:{inp.manual_nudge}")
 
     if d.context == CTX_IDLE:
-        # Echte Apple-TV-Wiedergabe gewinnt eng begrenzt gegen Gaming Grind.
-        # Einschalten, Idle und Pause bleiben rein beobachtbar und verdrängen
-        # Gaming nicht. Private Time wurde oben bereits priorisiert.
+        # Apple-TV idle/paused may establish streaming context, but G10 keeps
+        # actual playing as the only state that can displace gaming_grind.
+        # Private Time was already handled above.
         g = detect_gaming(inp, sticky_gaming_sub)
         stream_sub = detect_streaming(inp, app_map)
         stream_beats_grind = (
-            stream_sub is not None and g is not None and g[0] == SUB_GAME_GRIND
+            appletv_playing(inp.atv_state)
+            and stream_sub is not None
+            and g is not None
+            and g[0] == SUB_GAME_GRIND
         )
         if stream_beats_grind:
             d.context = CTX_STREAMING
@@ -596,6 +644,11 @@ def decide(
             sub, gs, gp, headset = g
             d.context = CTX_GAMING
             d.subcontext = sub
+            d.device = {
+                GP_PS5: DEV_PS5,
+                GP_SWITCH: DEV_SWITCH,
+                GP_PC: DEV_PC,
+            }.get(gp, d.device)
             d.gaming_source = gs
             d.gaming_platform = gp
             d.headset_active = headset
@@ -604,9 +657,10 @@ def decide(
             if stream_sub is not None:
                 d.context = CTX_STREAMING
                 d.subcontext = stream_sub
+                d.device = DEV_APPLETV
                 reasons.append(f"streaming:{inp.atv_app_id}")
             elif (
-                appletv_playing(inp.atv_state)
+                appletv_active(inp.atv_state)
                 and inp.atv_app_id in APPLETV_SYSTEM_APPS
             ):
                 # System-App → Rollback aufs Pre-ATV-Szenario.
@@ -621,6 +675,7 @@ def decide(
                 if tv_sub is not None:
                     d.context = CTX_TV
                     d.subcontext = tv_sub
+                    d.device = DEV_TV
                     reasons.append(f"tv:{inp.tv_source}")
                 elif inp.homepods_playing or inp.denon_active:
                     # Reines Audio (HomePods-/Denon-Musik) ist KEIN Screen-Szenario
