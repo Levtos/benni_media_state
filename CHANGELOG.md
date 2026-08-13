@@ -4,10 +4,13 @@
 
 - Native Apple-TV-LAN-Quelle ist autoritativ für Power, Verfügbarkeit und
   Playback; MA bleibt Routing-/Metadatenquelle.
+- `tv_candidate` wird als Rohsignal in das 20-s-TV-Startschutzfenster geführt;
+  erst danach entsteht ein bestätigter TV-Kontext.
 - TV-Watt-Fallback nutzt 50 W und TV-Starts erhalten ein 20-s-
   Stabilitätsfenster.
-- Apple TV und PS5 bleiben vor TV-WebOS/Watt; bestehende G10-Regeln für
-  `playing` versus `idle`/`paused` bleiben unverändert.
+- Apple TV und PS5 bleiben vor TV-WebOS/Watt; `playing`, `paused` und `idle`
+  dürfen gültigen Streaming-Kontext markieren, aber nur `playing` verdrängt
+  nach G10 den Gaming-Grind und keine dieser Zustände startet automatisch Musik.
 - Referenzen: `benni_media_state#21`, `benni-core-devices#41`.
 
 ## 0.12.0 — Media Activity Context Feed (Producer-first für core_state)

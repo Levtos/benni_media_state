@@ -123,10 +123,13 @@ def test_native_appletv_source_is_authoritative_over_master_fallback():
     ) == ("playing", "com.netflix.Netflix")
 
 
-def test_appletv_paused_does_not_start_music_or_streaming_context():
-    d = L.decide(_inp(atv_state="paused", atv_app_id="com.netflix.Netflix"))
-    assert d.context == C.CTX_IDLE
-    assert d.entertainment_active is False
+def test_appletv_idle_and_paused_are_streaming_context_without_music():
+    for state in ("idle", "paused"):
+        inp = _inp(atv_state=state, atv_app_id="com.netflix.Netflix")
+        d = L.decide(inp)
+        assert d.context == C.CTX_STREAMING
+        assert d.entertainment_active is True
+        assert L.derive_activity_context(d, inp).state == C.ACTX_ENTERTAINMENT
 
 
 def test_tv_source_ard():
@@ -141,19 +144,15 @@ def test_appletv_netflix():
     assert d.device == C.DEV_APPLETV
 
 
-def test_appletv_idle_does_not_count_as_streaming():
-    d = L.decide(_inp(atv_state="idle", atv_app_id="com.netflix.Netflix"))
-    assert d.context == C.CTX_IDLE
-
-
 def test_appletv_idle_does_not_beat_grind():
-    d = L.decide(_inp(
-        atv_state="idle", atv_app_id="com.netflix.Netflix",
-        ps5_on=True, ps5_raw="Helldivers 2", ps5_enum=1,
-    ))
-    assert d.context == C.CTX_GAMING
-    assert d.subcontext == C.SUB_GAME_GRIND
-    assert d.device == C.DEV_PS5
+    for state in ("idle", "paused"):
+        d = L.decide(_inp(
+            atv_state=state, atv_app_id="com.netflix.Netflix",
+            ps5_on=True, ps5_raw="Helldivers 2", ps5_enum=1,
+        ))
+        assert d.context == C.CTX_GAMING
+        assert d.subcontext == C.SUB_GAME_GRIND
+        assert d.device == C.DEV_PS5
 
 
 def test_appletv_playing_beats_grind():

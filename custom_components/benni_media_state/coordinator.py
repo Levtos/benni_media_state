@@ -377,11 +377,16 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Fallback (Master nicht gebunden/verfügbar, z. B. fremde Anlage) = Player
         plus TV-Watt-Fallback ab 50 W. Returns (tv_active, tv_power); tv_power
-        ist nur im Fallback gesetzt, sonst None (Master entscheidet).
+        ist nur im Fallback gesetzt, sonst None (Master entscheidet). Während
+        eines TV-only-Kaltstarts kann der Master zusätzlich `tv_candidate=true`
+        veröffentlichen. Dieser Kandidat ist ein Rohsignal für den lokalen
+        20-s-Startschutz, aber noch keine bestätigte `is_active`-/`is_powered`-
+        Wahrheit.
         """
         master = _opt_bool(self._attr(CONF_TV_MASTER, "is_active"))
-        if master is not None:
-            return master, None
+        candidate = _opt_bool(self._attr(CONF_TV_MASTER, "tv_candidate"))
+        if master is not None or candidate is not None:
+            return bool(master) or candidate is True, None
         tv_player_state = self._state(CONF_TV_PLAYER)
         active = _bool(self._state(CONF_TV_ACTIVE)) or tv_player_state in (
             "on", "playing", "paused",

@@ -426,7 +426,7 @@ def stabilize_tv_start(
 
 def detect_devices(inp: Inputs) -> list[str]:
     devs = []
-    if appletv_playing(inp.atv_state):
+    if appletv_active(inp.atv_state):
         devs.append(DEV_APPLETV)
     if inp.ps5_on:
         devs.append(DEV_PS5)
@@ -527,7 +527,10 @@ def hold_ps5_on(
 # Streaming via Apple TV
 # --------------------------------------------------------------------------- #
 def detect_streaming(inp: Inputs, app_map: dict[str, str]) -> Optional[str]:
-    if not appletv_playing(inp.atv_state):
+    # Context truth is broader than playback truth: native idle/paused with a
+    # valid Apple-TV session is still streaming context. G10 below keeps only
+    # actual playing eligible to displace gaming_grind.
+    if not appletv_active(inp.atv_state):
         return None
     app = inp.atv_app_id
     if app is None:
@@ -621,13 +624,16 @@ def decide(
         reasons.append(f"manual_nudge:{inp.manual_nudge}")
 
     if d.context == CTX_IDLE:
-        # Echte Apple-TV-Wiedergabe gewinnt eng begrenzt gegen Gaming Grind.
-        # Einschalten, Idle und Pause bleiben rein beobachtbar und verdrängen
-        # Gaming nicht. Private Time wurde oben bereits priorisiert.
+        # Apple-TV idle/paused may establish streaming context, but G10 keeps
+        # actual playing as the only state that can displace gaming_grind.
+        # Private Time was already handled above.
         g = detect_gaming(inp, sticky_gaming_sub)
         stream_sub = detect_streaming(inp, app_map)
         stream_beats_grind = (
-            stream_sub is not None and g is not None and g[0] == SUB_GAME_GRIND
+            appletv_playing(inp.atv_state)
+            and stream_sub is not None
+            and g is not None
+            and g[0] == SUB_GAME_GRIND
         )
         if stream_beats_grind:
             d.context = CTX_STREAMING
@@ -654,7 +660,7 @@ def decide(
                 d.device = DEV_APPLETV
                 reasons.append(f"streaming:{inp.atv_app_id}")
             elif (
-                appletv_playing(inp.atv_state)
+                appletv_active(inp.atv_state)
                 and inp.atv_app_id in APPLETV_SYSTEM_APPS
             ):
                 # System-App → Rollback aufs Pre-ATV-Szenario.
