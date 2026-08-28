@@ -349,6 +349,16 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         st = self.hass.states.get(eid)
         return st.state if st is not None else None
 
+    def _activity(self, key: str) -> bool:
+        """Read the canonical activity contract for a master or simple source."""
+        eid = self._entity_id(key)
+        if not eid:
+            return False
+        st = self.hass.states.get(eid)
+        if st is None:
+            return False
+        return logic.activity_from_contract(st.state, st.attributes.get("is_active"))
+
     def _attr(self, key: str, attr: str) -> str | None:
         eid = self._entity_id(key)
         if not eid:
@@ -482,17 +492,17 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ),
                 **self._artwork(CONF_APPLETV_PLAYER),
             ),
-            "ps5": dev(_bool(self._state(CONF_PS5_ACTIVE)) or ps5_pl in ("on", "playing", "paused"),
+            "ps5": dev(self._activity(CONF_PS5_ACTIVE) or ps5_pl in ("on", "playing", "paused"),
                        ps5_pl, "mdi:sony-playstation", title=self._attr(CONF_PS5_PLAYER, "media_title"), **self._artwork(CONF_PS5_PLAYER, CONF_PS5_ENUM)),
-            "switch": dev(_bool(self._state(CONF_SWITCH_ACTIVE)), self._state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch",
+            "switch": dev(self._activity(CONF_SWITCH_ACTIVE), self._raw_state(CONF_SWITCH_ACTIVE), "mdi:nintendo-switch",
                           ignored=True),
-            "pc": dev(_bool(self._state(CONF_PC_ACTIVE)), self._state(CONF_PC_ACTIVE), "mdi:desktop-classic"),
+            "pc": dev(self._activity(CONF_PC_ACTIVE), self._raw_state(CONF_PC_ACTIVE), "mdi:desktop-classic"),
             "homepods": dev(hp == "playing", hp, "mdi:speaker-multiple",
                             title=self._attr(CONF_HOMEPODS_PLAYER, "media_title"),
                             artist=self._attr(CONF_HOMEPODS_PLAYER, "media_artist"),
                             volume=self._attr_float(CONF_HOMEPODS_PLAYER, "volume_level"),
                             **self._artwork(CONF_HOMEPODS_PLAYER, CONF_MEDIA_ENUM, music_assistant=True)),
-            "denon": dev(_bool(self._state(CONF_DENON_ACTIVE)) or denon_pl in ("on", "playing"),
+            "denon": dev(self._activity(CONF_DENON_ACTIVE) or denon_pl in ("on", "playing"),
                          denon_pl, "mdi:audio-video"),
         }
 
@@ -566,7 +576,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # PS5: Plug-Active gewinnt, sonst Player-State.
         ps5_player_state = self._state(CONF_PS5_PLAYER)
-        ps5_on_raw = _bool(self._state(CONF_PS5_ACTIVE)) or ps5_player_state in (
+        ps5_on_raw = self._activity(CONF_PS5_ACTIVE) or ps5_player_state in (
             "on", "playing", "paused",
         )
         # OFF-Hold (FLEET-262): bricht ps5_on ein, während die Aktiv-Quelle
@@ -613,10 +623,10 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # der Switch-Dock hier hart ignoriert (Roh-State bleibt im Cockpit
             # sichtbar, treibt aber keine Entscheidung). Re-Enable: FLEET-95.
             switch_dock=False,
-            pc_active=_bool(self._state(CONF_PC_ACTIVE)),
+            pc_active=self._activity(CONF_PC_ACTIVE),
             pc_raw=self._state(CONF_PC_RAW),
             pc_enum=_int(self._state(CONF_PC_ENUM)),
-            denon_active=_bool(self._state(CONF_DENON_ACTIVE))
+            denon_active=self._activity(CONF_DENON_ACTIVE)
             or self._state(CONF_DENON_PLAYER) in ("on", "playing"),
             homepods_playing=self._state(CONF_HOMEPODS_PLAYER) == "playing",
             media_enum=_int(self._state(CONF_MEDIA_ENUM)),
@@ -650,7 +660,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # control#3: manuellen private_time-Latch auf der PC-Aus-Flanke räumen
         # (manual = switch ∧ PC). Vor dem Input-Bau, damit derselbe Tick schon
         # ohne private_time rechnet.
-        pc_active_now = _bool(self._state(CONF_PC_ACTIVE))
+        pc_active_now = self._activity(CONF_PC_ACTIVE)
         if logic.should_clear_private_on_pc_off(
             pc_active_now, self._last_pc_active, self._private_manual
         ):

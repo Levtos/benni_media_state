@@ -214,6 +214,32 @@ def test_pc_plug_alone_is_not_gaming():
     assert d.context == C.CTX_IDLE
 
 
+def test_master_is_active_true_beats_unknown_headline_for_private_time():
+    pc_active = L.activity_from_contract("unknown", True)
+    d = L.decide(
+        _inp(
+            pc_active=pc_active,
+            stash_streams=1,
+            denon_active=True,
+        )
+    )
+
+    assert d.context == C.CTX_PRIVATE
+    assert d.private_time_active is True
+    assert d.private_source == "auto"
+    assert d.private_blocked_reason is None
+
+
+def test_master_is_active_false_beats_unknown_headline():
+    assert L.activity_from_contract("unknown", False) is False
+
+
+def test_foreign_bool_source_without_is_active_keeps_state_fallback():
+    assert L.activity_from_contract("on") is True
+    assert L.activity_from_contract("off") is False
+    assert L.activity_from_contract("unknown") is False
+
+
 def test_pc_no_game_raw_is_not_gaming():
     # Live verifiziert: pc_raw="No Game" bei pc_enum=0 → kein Spiel.
     d = L.decide(_inp(pc_active=True, pc_raw="No Game", pc_enum=0))

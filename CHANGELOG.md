@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.3 — Canonical Core-Devices activity attributes
+
+- PC, PS5, Switch and Denon bindings now prefer a boolean Core-Devices
+  `is_active` attribute over the outer Master state.
+- Simple foreign sensors without `is_active` retain the existing state-based
+  fallback.
+- PC input construction, manual Private-Time PC-off clearing and cockpit
+  observability share the same activity evaluation.
+
 ## 0.14.2 — Stable TV/Apple-TV/PS5 Source Arbitration
 
 - Native Apple-TV-LAN-Quelle ist autoritativ für Power, Verfügbarkeit und
