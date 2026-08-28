@@ -74,6 +74,10 @@ from .const import (
     TV_WATT_THRESHOLD_ON,
 )
 
+_ACTIVE_SOURCE_STATES = frozenset(
+    {"on", "true", "1", "home", "active", "playing", "open"}
+)
+
 
 @dataclass(frozen=True)
 class Inputs:
@@ -170,6 +174,22 @@ class MediaState:
             "private_reason": self.private_reason,
             "private_blocked_reason": self.private_blocked_reason,
         }
+
+
+# --------------------------------------------------------------------------- #
+# Master-/Bool-Aktivitaetsvertrag
+# --------------------------------------------------------------------------- #
+def activity_from_contract(state: str | None, is_active: Any = None) -> bool:
+    """Resolve an activity binding without letting its headline hide evidence.
+
+    Core Devices publishes the boolean ``is_active`` attribute as the stable
+    activity contract. Simple foreign sensors without that attribute keep the
+    legacy state-based behavior. Only real booleans are authoritative; strings
+    such as ``"true"`` remain ordinary fallback states.
+    """
+    if isinstance(is_active, bool):
+        return is_active
+    return state is not None and str(state).strip().lower() in _ACTIVE_SOURCE_STATES
 
 
 # --------------------------------------------------------------------------- #
