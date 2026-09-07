@@ -498,7 +498,10 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ----- Geräte-Matrix / Now-Playing (reine Observability, kein decide) -----
     def _artwork(self, player_key: str, classifier_key: str | None = None, *, music_assistant: bool = False) -> dict[str, Any]:
         """Geordnete Artwork-Kandidaten; die UI fällt bei Ladefehlern weiter."""
-        attrs = ("media_image_url", "entity_picture") if music_assistant else ("entity_picture", "media_image_url")
+        # HA already resolves provider images through its authenticated local
+        # media-player proxy. Keep existing source order, then try that proxy
+        # before classifier artwork if the direct URL is not browser-reachable.
+        attrs = ("media_image_url", "entity_picture", "entity_picture_local") if music_assistant else ("entity_picture", "media_image_url", "entity_picture_local")
         candidates: list[dict[str, str]] = []
         for attr in attrs:
             value = self._attr(player_key, attr)
