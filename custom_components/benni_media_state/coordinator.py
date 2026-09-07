@@ -146,6 +146,9 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # TV-Start-Stabilisierung: ein TV-Signal wird erst nach 20 s als TV-
         # Kontext zugelassen; ein sauberes Off verwirft das Fenster.
         self._tv_start_since: float | None = None
+        self._foreground = logic.ForegroundSource()
+        self._cancel_source_deadline: CALLBACK_TYPE | None = None
+        self._source_debounce_fixed = False
         # Nativer private_time-Manual-Latch (FLEET-44/98): Zustand + Auto-Clear.
         # Gesetzt/gelesen über die switch-Entität (switch.py); Auto-Clear bei
         # Einschlaf-Flanke (bio_state) und nach Timeout.
@@ -237,6 +240,41 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         self.entry.async_on_unload(self._cancel_pending)
         self.entry.async_on_unload(self._cancel_private_timeout)
+        self.entry.async_on_unload(self._cancel_source_timer)
+
+    @callback
+    def _cancel_source_timer(self) -> None:
+        if self._cancel_source_deadline is not None:
+            self._cancel_source_deadline()
+            self._cancel_source_deadline = None
+
+    def _observe_foreground(self) -> None:
+        """Observe at event time so debounce never extends source-loss grace."""
+        tv_state = self._raw_state(CONF_TV_PLAYER)
+        tv_off = tv_state in ("off", "standby")
+        master = _opt_bool(self._attr(CONF_TV_MASTER, "is_active"))
+        # A candidate or source attribute alone is not powered-on evidence.
+        tv_confirmed = master is True or tv_state in ("on", "playing", "paused")
+        source = self._attr(CONF_TV_PLAYER, "source") if tv_state not in (None, "unknown", "unavailable") else None
+        self._foreground.update(bool(tv_confirmed), tv_off, source, time.monotonic())
+
+    def _schedule_source_deadline(self) -> None:
+        self._cancel_source_timer()
+        now = time.monotonic()
+        remaining = self._foreground.diagnostics(now)["grace_remaining_seconds"]
+        delays = [remaining] if remaining > 0 else []
+        if self._tv_start_since is not None:
+            startup = TV_START_STABILIZATION_SECONDS - (now - self._tv_start_since)
+            if startup > 0:
+                delays.append(startup)
+        if delays:
+            self._cancel_source_deadline = async_call_later(self.hass, min(delays), self._on_source_deadline)
+
+    @callback
+    def _on_source_deadline(self, _now) -> None:
+        self._cancel_source_deadline = None
+        self._cancel_pending()
+        self.async_set_updated_data(self._compute())
 
     @callback
     def _cancel_pending(self) -> None:
@@ -244,6 +282,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._cancel_debounce()
             self._cancel_debounce = None
         self._debounce_started = None
+        self._source_debounce_fixed = False
 
     @callback
     def _on_state_change(self, _event: Event) -> None:
@@ -254,6 +293,17 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         anhaltender Aenderungsstrom kann den compute damit nicht mehr unbegrenzt
         verschieben — der Uebergang ist nach oben begrenzt und deterministisch.
         """
+        self._observe_foreground()
+        self._schedule_source_deadline()
+        # Authoritative sources and explicit TV-off use the normal short
+        # debounce once, without starvation from unrelated events.
+        decisive = (
+            self._foreground.current is not None
+            or self._atv()[0] == "playing"
+            or self._foreground.reason == "tv_off"
+        )
+        if self._cancel_debounce is not None and self._source_debounce_fixed:
+            return
         delay = self.debounce_seconds
         if delay <= 0:
             self._cancel_pending()
@@ -269,12 +319,14 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         started = self._debounce_started
         self._cancel_pending()
         self._debounce_started = started if started is not None else now
+        self._source_debounce_fixed = decisive
         self._cancel_debounce = async_call_later(self.hass, delay, self._on_debounce)
 
     @callback
     def _on_debounce(self, _now) -> None:
         self._cancel_debounce = None
         self._debounce_started = None
+        self._source_debounce_fixed = False
         self.async_set_updated_data(self._compute())
 
     # ----- service surface -----
@@ -506,7 +558,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                          denon_pl, "mdi:audio-video"),
         }
 
-    _GAME_LABELS = {0: "gaming_default", 1: "gaming_grind", 2: "gaming_headset"}
+    _GAME_LABELS = {0: "gaming_default", 1: "gaming_grind", 2: "gaming_headset", 3: "gaming_grind_preemptible"}
     _MUSIC_LABELS = {0: "normal", 1: "boost", 2: "mute"}
 
     def _context_echo(self) -> dict[str, Any]:
@@ -556,6 +608,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ----- evaluation -----
     def _build_inputs(self) -> logic.Inputs:
+        self._observe_foreground()
         # TV (FLEET-112): Aktiv-Wahrheit aus dem core_devices-Master; Quelle für
         # den Subcontext weiterhin aus dem Player-`source`-Attribut.
         tv_active_raw, tv_power = self._tv_active()
@@ -609,6 +662,8 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             tv_active=tv_active,
             tv_source=self._attr(CONF_TV_PLAYER, "source"),
             tv_power=tv_power,
+            foreground=self._foreground.current,
+            streaming_confirmed=(self.data or {}).get("context") == CTX_STREAMING,
             atv_state=atv_state,
             atv_app_id=atv_app_id,
             ps5_on=ps5_on,
@@ -689,6 +744,13 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             self._sticky_gaming_sub = None
         data = state.as_dict()
+        data["source_arbitration"] = {
+            **self._foreground.diagnostics(time.monotonic()),
+            "selected_source": state.device,
+            "conflict": bool(inputs.atv_state in ("playing", "paused", "idle") and (inputs.ps5_on or inputs.foreground == GP_PS5)),
+        }
+        data["active_reasons"].append(self._foreground.reason)
+        self._schedule_source_deadline()
         # Observability-Anreicherung (UX-Cockpit): Geräte-Matrix + Now-Playing.
         data["devices"] = self._device_matrix()
         data["now_playing"] = self._now_playing()

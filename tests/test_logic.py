@@ -123,9 +123,9 @@ def test_native_appletv_source_is_authoritative_over_master_fallback():
     ) == ("playing", "com.netflix.Netflix")
 
 
-def test_appletv_idle_and_paused_are_streaming_context_without_music():
+def test_appletv_idle_and_paused_hold_confirmed_foreground_without_music():
     for state in ("idle", "paused"):
-        inp = _inp(atv_state=state, atv_app_id="com.netflix.Netflix")
+        inp = _inp(atv_state=state, atv_app_id="com.netflix.Netflix", foreground=C.DEV_APPLETV, streaming_confirmed=True)
         d = L.decide(inp)
         assert d.context == C.CTX_STREAMING
         assert d.entertainment_active is True
