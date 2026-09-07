@@ -558,7 +558,7 @@ class MediaStateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                          denon_pl, "mdi:audio-video"),
         }
 
-    _GAME_LABELS = {0: "gaming_default", 1: "gaming_grind", 2: "gaming_headset"}
+    _GAME_LABELS = {0: "gaming_default", 1: "gaming_grind", 2: "gaming_headset", 3: "gaming_grind_preemptible"}
     _MUSIC_LABELS = {0: "normal", 1: "boost", 2: "mute"}
 
     def _context_echo(self) -> dict[str, Any]:

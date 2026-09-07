@@ -96,3 +96,9 @@ def test_private_and_away_still_beat_foreground():
     source = dict(foreground=C.DEV_PS5, atv_state="playing")
     assert L.decide(L.Inputs(**source, pc_active=True, private_manual=True)).context == C.CTX_PRIVATE
     assert L.decide(L.Inputs(**source, away_gated=True)).context == C.CTX_IDLE
+
+
+def test_lg_foreground_does_not_rewrite_pc_headset_priority():
+    state = L.decide(L.Inputs(pc_active=True, pc_raw="game", pc_enum=2, atv_state="playing", foreground=C.DEV_APPLETV))
+    assert state.context == C.CTX_GAMING
+    assert state.device == C.DEV_PC and state.headset_active

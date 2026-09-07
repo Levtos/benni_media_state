@@ -731,7 +731,10 @@ def decide(
             and g[0] == SUB_GAME_GRIND
             and inp.foreground != DEV_PS5
         )
-        foreground_stream = stream_sub is not None and inp.foreground == DEV_APPLETV
+        foreground_stream = (
+            stream_sub is not None and inp.foreground == DEV_APPLETV
+            and (g is None or g[2] == GP_PS5)
+        )
         if stream_beats_grind or foreground_stream:
             d.context = CTX_STREAMING
             d.subcontext = stream_sub
