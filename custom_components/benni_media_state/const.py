@@ -167,6 +167,10 @@ PS5_DROPOUT_HOLD_SECONDS: Final = 90.0
 ENUM_GAME_DEFAULT: Final = 0
 ENUM_GAME_GRIND: Final = 1
 ENUM_GAME_HEADSET: Final = 2
+ENUM_GAME_GRIND_PREEMPTIBLE: Final = 3
+
+# Issue #24, Benni decision 2026-09-07: source loss only, not TV startup.
+LG_SOURCE_GRACE_SECONDS: Final = 5.0
 
 # Musik-/Media-Enum (title_classifier musikkatalog): 2 = Mute → Quiet-Detection
 # hier in media_state (FLEET-30/31); 1 = Boost ist Volume → media_policy.
@@ -499,6 +503,7 @@ BIO_SLEEP_VALUES: Final[frozenset[str]] = frozenset({"sleep", "asleep"})
 
 # Attribute, die der reiche Context-Sensor zusätzlich zum State zeigt.
 CONTEXT_ATTRS: Final[tuple[str, ...]] = (
+    "source_arbitration",
     "subcontext",
     "device",
     "gaming_source",

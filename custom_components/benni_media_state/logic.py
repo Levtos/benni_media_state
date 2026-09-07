@@ -47,6 +47,7 @@ from .const import (
     DEV_SWITCH,
     DEV_TV,
     ENUM_GAME_GRIND,
+    ENUM_GAME_GRIND_PREEMPTIBLE,
     ENUM_GAME_HEADSET,
     ENUM_MEDIA_MUTE,
     GP_NONE,
@@ -59,6 +60,7 @@ from .const import (
     HOLD_HARD,
     HOLD_NONE,
     HOLD_SOFT,
+    LG_SOURCE_GRACE_SECONDS,
     NO_TITLE_VALUES,
     PRES_AWAY,
     PRES_HOME,
@@ -87,6 +89,8 @@ class Inputs:
     tv_active: bool = False
     tv_source: Optional[str] = None
     tv_power: Optional[bool] = None
+    foreground: str | None = None
+    streaming_confirmed: bool = False
     # Apple TV
     atv_state: Optional[str] = None        # playing/paused/idle/off/standby
     atv_app_id: Optional[str] = None
@@ -405,6 +409,70 @@ def appletv_playing(state: Optional[str]) -> bool:
     return state == "playing"
 
 
+@dataclass
+class ForegroundSource:
+    """Current LG evidence with a bounded dropout, never a power detector.
+
+    An unchanged available source is current evidence, not a cached source with
+    an invented TTL. Only explicit loss can borrow the last source for 5 s.
+    """
+
+    last_valid: str | None = None
+    current: str | None = None
+    lost_at: float | None = None
+    eligible: bool = False
+    reason: str = "source_missing"
+
+    def update(self, tv_active: bool, tv_off: bool, source: str | None, now: float) -> None:
+        recognized = {"Apple OTT": DEV_APPLETV, "PlayStation 5": DEV_PS5, **{key: DEV_TV for key in TV_SOURCE_MAP}}
+        selected = recognized.get(source)
+        if tv_off or not tv_active:
+            self.current = None
+            self.lost_at = None
+            self.eligible = False
+            self.reason = "tv_off" if tv_off else "tv_not_confirmed"
+        elif selected is not None:
+            changed = self.last_valid is not None and self.last_valid != selected
+            recovered = self.lost_at is not None
+            self.current = self.last_valid = selected
+            self.lost_at = None
+            self.eligible = True
+            if changed:
+                self.reason = "source_changed"
+            elif recovered:
+                self.reason = "source_recovered"
+            elif self.reason not in ("source_changed", "source_recovered"):
+                self.reason = "source_recognized"
+        elif source is None or source.strip().lower() in ("", "unknown", "unavailable"):
+            if self.eligible and self.lost_at is None:
+                self.lost_at = now
+            if self.lost_at is not None and now - self.lost_at < LG_SOURCE_GRACE_SECONDS:
+                self.current = self.last_valid
+                self.reason = "source_grace"
+            else:
+                self.current = None
+                self.reason = "source_grace_expired" if self.lost_at is not None else "source_missing"
+        else:
+            self.current = None
+            self.lost_at = None
+            self.eligible = False
+            self.reason = "source_unrecognized"
+
+    def diagnostics(self, now: float) -> dict[str, Any]:
+        elapsed = max(0.0, now - self.lost_at) if self.lost_at is not None else 0.0
+        active = self.reason == "source_grace" and elapsed < LG_SOURCE_GRACE_SECONDS
+        return {
+            "foreground_source": self.current,
+            "last_valid_foreground_source": self.last_valid,
+            "grace_active": active,
+            "grace_elapsed_seconds": elapsed,
+            "grace_remaining_seconds": max(0.0, LG_SOURCE_GRACE_SECONDS - elapsed) if active else 0.0,
+            "grace_expired": self.reason == "source_grace_expired",
+            "reason": self.reason,
+            "degraded": self.current is None or active,
+        }
+
+
 def select_appletv_source(
     native_bound: bool,
     native_state: Optional[str],
@@ -446,7 +514,10 @@ def stabilize_tv_start(
 
 def detect_devices(inp: Inputs) -> list[str]:
     devs = []
-    if appletv_active(inp.atv_state):
+    if appletv_playing(inp.atv_state) or (
+        inp.atv_state in ("paused", "idle")
+        and inp.foreground == DEV_APPLETV and inp.streaming_confirmed
+    ):
         devs.append(DEV_APPLETV)
     if inp.ps5_on:
         devs.append(DEV_PS5)
@@ -467,7 +538,7 @@ def detect_devices(inp: Inputs) -> list[str]:
 # Gaming (B2 FINAL + R6)
 # --------------------------------------------------------------------------- #
 def _sub_from_enum(enum_val: int) -> str:
-    if enum_val == ENUM_GAME_GRIND:
+    if enum_val in (ENUM_GAME_GRIND, ENUM_GAME_GRIND_PREEMPTIBLE):
         return SUB_GAME_GRIND
     if enum_val == ENUM_GAME_HEADSET:
         return SUB_GAME_HEADSET
@@ -486,7 +557,7 @@ def detect_gaming(
     - PC: NUR über die Titel-Ebene — ETM-Raw vorhanden ∧ ≠ "No Game" (B2-Gate).
       pc_active (Plug) allein ist KEIN Gaming (das war der B2-Bug).
     """
-    if inp.ps5_on:
+    if inp.ps5_on or inp.foreground == DEV_PS5:
         has_title = title_present(inp.ps5_raw) or bool(
             inp.ps5_title and str(inp.ps5_title).strip()
         )
@@ -550,7 +621,11 @@ def detect_streaming(inp: Inputs, app_map: dict[str, str]) -> Optional[str]:
     # Context truth is broader than playback truth: native idle/paused with a
     # valid Apple-TV session is still streaming context. G10 below keeps only
     # actual playing eligible to displace gaming_grind.
-    if not appletv_active(inp.atv_state):
+    if not (appletv_playing(inp.atv_state) or (
+        inp.atv_state in ("paused", "idle")
+        and inp.foreground == DEV_APPLETV
+        and inp.streaming_confirmed
+    )):
         return None
     app = inp.atv_app_id
     if app is None:
@@ -654,12 +729,14 @@ def decide(
             and stream_sub is not None
             and g is not None
             and g[0] == SUB_GAME_GRIND
+            and inp.foreground != DEV_PS5
         )
-        if stream_beats_grind:
+        foreground_stream = stream_sub is not None and inp.foreground == DEV_APPLETV
+        if stream_beats_grind or foreground_stream:
             d.context = CTX_STREAMING
             d.subcontext = stream_sub
             d.device = DEV_APPLETV
-            reasons.append(f"streaming_over_grind:{inp.atv_app_id}")
+            reasons.append(f"streaming_over_grind:{inp.atv_app_id}" if stream_beats_grind else "foreground:appletv")
         elif g is not None:
             sub, gs, gp, headset = g
             d.context = CTX_GAMING
@@ -681,6 +758,7 @@ def decide(
                 reasons.append(f"streaming:{inp.atv_app_id}")
             elif (
                 appletv_active(inp.atv_state)
+                and (appletv_playing(inp.atv_state) or (inp.foreground == DEV_APPLETV and inp.streaming_confirmed))
                 and inp.atv_app_id in APPLETV_SYSTEM_APPS
             ):
                 # System-App → Rollback aufs Pre-ATV-Szenario.
